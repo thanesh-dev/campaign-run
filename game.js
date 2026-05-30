@@ -843,6 +843,738 @@ document.querySelectorAll('.map-btn').forEach(btn => {
   };
 });
 
+// Portal Transitions
+document.getElementById('btn-goto-campaign').onclick = () => {
+  sfx.play('click');
+  showScreen('start-screen');
+};
+
+document.getElementById('btn-campaign-back').onclick = () => {
+  sfx.play('click');
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-goto-factory').onclick = () => {
+  sfx.play('click');
+  initFactoryBoss();
+  showScreen('factory-screen');
+};
+
+document.getElementById('btn-factory-back').onclick = () => {
+  sfx.play('click');
+  exitFactoryBoss();
+  showScreen('hub-screen');
+};
+
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 initCanvas();
-showScreen('start-screen');
+showScreen('hub-screen');
+
+
+// ==============================================================================
+// ─── FACTORY BOSS GAME MODULE ─────────────────────────────────────────────────
+// ==============================================================================
+
+// Web Audio API Synthesizer
+const sfx = {
+  ctx: null,
+  init() {
+    if (!this.ctx) {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+  },
+  play(type) {
+    this.init();
+    if (!this.ctx) return;
+    try {
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+      const now = this.ctx.currentTime;
+      if (type === 'click') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(300, now + 0.08);
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.08);
+        osc.start(now); osc.stop(now + 0.08);
+      } else if (type === 'make') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(250, now);
+        osc.frequency.exponentialRampToValueAtTime(150, now + 0.15);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.15);
+        osc.start(now); osc.stop(now + 0.15);
+      } else if (type === 'pack') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.linearRampToValueAtTime(90, now + 0.2);
+        gain.gain.setValueAtTime(0.04, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
+      } else if (type === 'cash') {
+        [0, 0.08].forEach((delay, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.connect(gain); gain.connect(this.ctx.destination);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(idx === 0 ? 1200 : 1500, now + delay);
+          gain.gain.setValueAtTime(0.05, now + delay);
+          gain.gain.linearRampToValueAtTime(0, now + delay + 0.2);
+          osc.start(now + delay); osc.stop(now + delay + 0.2);
+        });
+      } else if (type === 'level') {
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+          const delay = idx * 0.08;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.connect(gain); gain.connect(this.ctx.destination);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + delay);
+          gain.gain.setValueAtTime(0.06, now + delay);
+          gain.gain.linearRampToValueAtTime(0, now + delay + 0.25);
+          osc.start(now + delay); osc.stop(now + delay + 0.25);
+        });
+      } else if (type === 'error') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(110, now);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
+      }
+    } catch (e) {
+      console.log('Audio error:', e);
+    }
+  }
+};
+
+let factoryActive = false;
+let factoryLastTime = 0;
+let factoryAnimId = null;
+
+// Game State Variables
+let fCash = 0.00;
+let fXp = 0;
+let fLevel = 1;
+let fName = "Apprentice's Shop";
+let fRank = "Apprentice";
+
+let stockUnpacked = 0;
+let stockPacked = 0;
+
+let productTier = 0;
+let boxSize = 5;
+let conveyorSpeedMult = 1.0;
+
+// Automation Rates (units/sec)
+let autoMakeRate = 0.0;
+let autoPackRate = 0.0;
+let autoShipRate = 0.0;
+
+// Base durations (seconds)
+const MAKE_BASE_DUR = 1.5;
+const PACK_BASE_DUR = 2.0;
+const SHIP_BASE_DUR = 3.0;
+
+// Progress trackers (0 to 100)
+let makeProgress = 0;
+let makeIsRunning = false;
+
+let packProgress = 0;
+let packIsRunning = false;
+
+let shipProgress = 0;
+let shipIsRunning = false;
+
+// Accumulators for smooth float updates
+let accumAutoPack = 0;
+let accumAutoShip = 0;
+let partiallyPackedUnits = 0;
+
+// Costs
+let costAutoMake = 25;
+let costAutoPack = 75;
+let costAutoShip = 150;
+let costSpeed = 50;
+let costTier = 100;
+let costBoxSize = 120;
+
+// Achievements
+let unlockedAchievements = [];
+
+const PRODUCT_TIERS = [
+  { name: "Widgets", emoji: "🔧", baseVal: 1.50 },
+  { name: "Toys", emoji: "🧸", baseVal: 4.50 },
+  { name: "Gears", emoji: "⚙️", baseVal: 12.00 },
+  { name: "Appliances", emoji: "📺", baseVal: 45.00 },
+  { name: "Automobiles", emoji: "🚗", baseVal: 200.00 },
+  { name: "Robots", emoji: "🤖", baseVal: 800.00 }
+];
+
+const FACTORY_ACHIEVEMENTS = [
+  { id: "first_dollar", title: "First Revenue", desc: "Earn your first $10", target: 10, type: "cash", badge: "🪙" },
+  { id: "mechanization", title: "Mechanization", desc: "Own 1 Assemble-o-Matic", target: 1, type: "automake", badge: "🤖" },
+  { id: "assembly_line", title: "Assembly Line", desc: "Own 1 Packing Robot Arm", target: 1, type: "autopack", badge: "🦾" },
+  { id: "logistics_boss", title: "Logistics Boss", desc: "Own 1 Courier Drone", target: 1, type: "autoship", badge: "🛸" },
+  { id: "investor", title: "Investor", desc: "Accumulate $1,000 Cash", target: 1000, type: "cash", badge: "💰" },
+  { id: "automation_master", title: "Automation Master", desc: "Reach level 5 automation on all three machines", target: 5, type: "automaster", badge: "⚡" },
+  { id: "ceo_status", title: "CEO Status", desc: "Reach Level 10", target: 10, type: "level", badge: "👑" },
+  { id: "factory_boss", title: "Factory Boss", desc: "Unlock Robots (Product Tier 5)", target: 5, type: "tier", badge: "🏭" }
+];
+
+// Helper calculations
+function getCashMultiplier() {
+  let mult = 1.0;
+  if (unlockedAchievements.includes("first_dollar")) mult += 0.10;
+  if (unlockedAchievements.includes("investor")) mult += 0.15;
+  if (unlockedAchievements.includes("ceo_status")) mult += 0.25;
+  const boxUpgrades = (boxSize - 5) / 5;
+  mult += boxUpgrades * 0.15;
+  return mult;
+}
+
+function getSpeedMultiplier() {
+  let mult = conveyorSpeedMult;
+  if (unlockedAchievements.includes("mechanization")) mult += 0.10;
+  if (unlockedAchievements.includes("assembly_line")) mult += 0.10;
+  if (unlockedAchievements.includes("logistics_boss")) mult += 0.10;
+  if (unlockedAchievements.includes("automation_master")) mult += 0.25;
+  if (unlockedAchievements.includes("factory_boss")) mult += 0.50;
+  return mult;
+}
+
+// Manual Task Clicks
+document.getElementById('btn-action-make').onclick = () => {
+  sfx.init();
+  if (makeIsRunning) return;
+  sfx.play('click');
+  makeIsRunning = true;
+  makeProgress = 0;
+};
+
+document.getElementById('btn-action-pack').onclick = () => {
+  sfx.init();
+  if (packIsRunning) return;
+  if (Math.floor(stockUnpacked) < boxSize) {
+    sfx.play('error');
+    createFloater('task-pack', "Need raw products!", "#e74c3c");
+    return;
+  }
+  sfx.play('click');
+  packIsRunning = true;
+  packProgress = 0;
+};
+
+document.getElementById('btn-action-ship').onclick = () => {
+  sfx.init();
+  if (shipIsRunning) return;
+  if (stockPacked < 1) {
+    sfx.play('error');
+    createFloater('task-ship', "No boxes packed!", "#e74c3c");
+    return;
+  }
+  sfx.play('click');
+  shipIsRunning = true;
+  shipProgress = 0;
+};
+
+// Tabs Switching
+document.querySelectorAll('.upgrades-panel .tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    sfx.init();
+    document.querySelectorAll('.upgrades-panel .tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.upgrades-panel .tab-pane').forEach(p => p.classList.remove('active'));
+    
+    btn.classList.add('active');
+    const tabId = btn.dataset.tab;
+    document.getElementById(tabId).classList.add('active');
+    sfx.play('click');
+  };
+});
+
+// Upgrades Buying logic
+document.getElementById('btn-buy-auto-make').onclick = () => {
+  sfx.init();
+  if (fCash < costAutoMake) return;
+  fCash -= costAutoMake;
+  autoMakeRate += 1.0;
+  costAutoMake = Math.floor(25 * Math.pow(1.45, autoMakeRate));
+  sfx.play('cash');
+  createFloater('upg-auto-make', "Purchased Assemble-o-Matic!", "#2ecc71");
+  checkAchievements();
+  saveFactoryGame();
+  updateFactoryUI();
+};
+
+document.getElementById('btn-buy-auto-pack').onclick = () => {
+  sfx.init();
+  if (fCash < costAutoPack) return;
+  fCash -= costAutoPack;
+  autoPackRate += 1.0;
+  costAutoPack = Math.floor(75 * Math.pow(1.45, autoPackRate));
+  sfx.play('cash');
+  createFloater('upg-auto-pack', "Purchased Packing Arm!", "#2ecc71");
+  checkAchievements();
+  saveFactoryGame();
+  updateFactoryUI();
+};
+
+document.getElementById('btn-buy-auto-ship').onclick = () => {
+  sfx.init();
+  if (fCash < costAutoShip) return;
+  fCash -= costAutoShip;
+  autoShipRate += 0.2;
+  costAutoShip = Math.floor(150 * Math.pow(1.5, autoShipRate * 5));
+  sfx.play('cash');
+  createFloater('upg-auto-ship', "Purchased Courier Drone!", "#2ecc71");
+  checkAchievements();
+  saveFactoryGame();
+  updateFactoryUI();
+};
+
+document.getElementById('btn-buy-speed').onclick = () => {
+  sfx.init();
+  if (fCash < costSpeed) return;
+  fCash -= costSpeed;
+  const speedLevels = Math.round((conveyorSpeedMult - 1.0) / 0.1);
+  conveyorSpeedMult += 0.1;
+  costSpeed = Math.floor(50 * Math.pow(1.8, speedLevels + 1));
+  sfx.play('cash');
+  createFloater('upg-speed', "Conveyors Sped Up!", "#2ecc71");
+  checkAchievements();
+  saveFactoryGame();
+  updateFactoryUI();
+};
+
+document.getElementById('btn-buy-tier').onclick = () => {
+  sfx.init();
+  if (fCash < costTier) return;
+  if (productTier >= PRODUCT_TIERS.length - 1) return;
+  fCash -= costTier;
+  productTier += 1;
+  costTier = Math.floor(100 * Math.pow(4, productTier));
+  sfx.play('cash');
+  createFloater('upg-tier', `Unlocked ${PRODUCT_TIERS[productTier].name}!`, "#2ecc71");
+  checkAchievements();
+  saveFactoryGame();
+  updateFactoryUI();
+};
+
+document.getElementById('btn-buy-box-size').onclick = () => {
+  sfx.init();
+  if (fCash < costBoxSize) return;
+  fCash -= costBoxSize;
+  boxSize += 5;
+  costBoxSize = Math.floor(120 * Math.pow(2.0, (boxSize / 5) - 1));
+  sfx.play('cash');
+  createFloater('upg-box-size', "Box Size Increased!", "#2ecc71");
+  checkAchievements();
+  saveFactoryGame();
+  updateFactoryUI();
+};
+
+// Floaters Logic
+function createFloater(elementId, text, color) {
+  const container = document.getElementById('factory-floaters');
+  const target = document.getElementById(elementId);
+  if (!container || !target) return;
+  const tRect = target.getBoundingClientRect();
+  const cRect = container.getBoundingClientRect();
+  
+  const x = tRect.left - cRect.left + tRect.width / 2 + (Math.random() - 0.5) * 35;
+  const y = tRect.top - cRect.top + (Math.random() - 0.5) * 10;
+  
+  const div = document.createElement('div');
+  div.className = 'floater';
+  div.textContent = text;
+  div.style.left = `${x}px`;
+  div.style.top = `${y}px`;
+  div.style.color = color;
+  container.appendChild(div);
+  
+  setTimeout(() => div.remove(), 800);
+}
+
+// Deliver Boxes Logic
+function deliverBoxes(count, isManual) {
+  const activeProduct = PRODUCT_TIERS[productTier];
+  const cashReward = count * boxSize * activeProduct.baseVal * getCashMultiplier();
+  const xpReward = count * Math.floor(boxSize * (productTier + 1) * 3);
+  
+  fCash += cashReward;
+  fXp += xpReward;
+  
+  // Level up check
+  let nextXp = Math.floor(100 * Math.pow(1.35, fLevel - 1));
+  let leveledUp = false;
+  while (fXp >= nextXp) {
+    fXp -= nextXp;
+    fLevel++;
+    nextXp = Math.floor(100 * Math.pow(1.35, fLevel - 1));
+    leveledUp = true;
+  }
+  
+  sfx.play('cash');
+  
+  // Create floaters
+  const targetCard = isManual ? 'btn-action-ship' : 'task-ship';
+  createFloater(targetCard, `+$${cashReward.toFixed(2)}`, "#2ecc71");
+  createFloater('factory-xp-fill', `+${xpReward} XP`, "#3498db");
+  
+  if (leveledUp) {
+    sfx.play('level');
+    createFloater('factory-level', "Level Up! 🎉", "#ff1493");
+    showPowerupBanner(`🎉 LEVEL ${fLevel}! NEW DIGNITY UNLOCKED.`);
+  }
+  
+  checkAchievements();
+}
+
+// Achievements Check
+function checkAchievements() {
+  let changed = false;
+  
+  FACTORY_ACHIEVEMENTS.forEach(ach => {
+    if (unlockedAchievements.includes(ach.id)) return;
+    
+    let isFulfilled = false;
+    switch(ach.type) {
+      case 'cash':
+        if (fCash >= ach.target) isFulfilled = true;
+        break;
+      case 'automake':
+        if (autoMakeRate >= ach.target) isFulfilled = true;
+        break;
+      case 'autopack':
+        if (autoPackRate >= ach.target) isFulfilled = true;
+        break;
+      case 'autoship':
+        if (autoShipRate >= ach.target) isFulfilled = true;
+        break;
+      case 'level':
+        if (fLevel >= ach.target) isFulfilled = true;
+        break;
+      case 'tier':
+        if (productTier >= ach.target) isFulfilled = true;
+        break;
+      case 'automaster':
+        if (autoMakeRate >= 5 && autoPackRate >= 5 && autoShipRate >= 1.0) isFulfilled = true;
+        break;
+    }
+    
+    if (isFulfilled) {
+      unlockedAchievements.push(ach.id);
+      sfx.play('level');
+      createFloater('factory-screen', `🏆 Milestone: ${ach.title}!`, "#f1c40f");
+      changed = true;
+    }
+  });
+  
+  if (changed) {
+    renderAchievements();
+    saveFactoryGame();
+  }
+}
+
+function renderAchievements() {
+  const el = document.getElementById('factory-achievements-list');
+  if (!el) return;
+  el.innerHTML = FACTORY_ACHIEVEMENTS.map(ach => {
+    const isUnlocked = unlockedAchievements.includes(ach.id);
+    return `
+      <div class="ach-card ${isUnlocked ? 'unlocked' : ''}">
+        <span class="ach-badge">${ach.badge}</span>
+        <div class="ach-details">
+          <span class="ach-title">${ach.title}</span>
+          <span class="ach-desc">${ach.desc}</span>
+          <span class="ach-status">${isUnlocked ? 'Completed' : 'Locked'}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Formatting helpers
+function formatCash(val) {
+  if (val >= 1000000000) return `$${(val / 1000000000).toFixed(2)}B`;
+  if (val >= 1000000) return `$${(val / 1000000).toFixed(2)}M`;
+  if (val >= 1000) return `$${(val / 1000).toFixed(2)}K`;
+  return `$${val.toFixed(2)}`;
+}
+
+// UI updates
+function updateFactoryUI() {
+  document.getElementById('factory-cash').textContent = formatCash(fCash);
+  document.getElementById('factory-level').textContent = fLevel;
+  document.getElementById('factory-current-xp').textContent = fXp;
+  const nextXp = Math.floor(100 * Math.pow(1.35, fLevel - 1));
+  document.getElementById('factory-next-xp').textContent = nextXp;
+  const xpPct = Math.min(100, (fXp / nextXp) * 100);
+  document.getElementById('factory-xp-fill').style.width = `${xpPct}%`;
+  
+  let rank = "Apprentice";
+  if (fLevel >= 25) rank = "Factory Boss 👑";
+  else if (fLevel >= 20) rank = "Plant Head 🏭";
+  else if (fLevel >= 15) rank = "Maintenance Manager 🔧";
+  else if (fLevel >= 10) rank = "Senior Engineer ⚙️";
+  else if (fLevel >= 5) rank = "Technician 🛠️";
+  document.getElementById('factory-rank').textContent = rank;
+  document.getElementById('factory-name').textContent = fName;
+
+  document.getElementById('val-stock-unpacked').textContent = `${Math.floor(stockUnpacked)} in stock`;
+  document.getElementById('val-stock-packed').textContent = `${stockPacked} box${stockPacked === 1 ? '' : 'es'} packed`;
+  
+  const activeProduct = PRODUCT_TIERS[productTier];
+  document.getElementById('val-product-name').textContent = activeProduct.name;
+  document.getElementById('val-make-reward').textContent = activeProduct.baseVal.toFixed(2);
+  document.getElementById('val-box-size').textContent = boxSize;
+  
+  const boxValue = boxSize * activeProduct.baseVal * getCashMultiplier();
+  const boxXp = Math.floor(boxSize * (productTier + 1) * 3);
+  document.getElementById('val-ship-reward').textContent = boxValue.toFixed(2);
+  document.getElementById('val-ship-xp').textContent = boxXp;
+  
+  document.getElementById('auto-make-lbl').textContent = autoMakeRate > 0 ? `Auto: ${autoMakeRate}/s` : "Auto: Off";
+  document.getElementById('auto-make-lbl').className = autoMakeRate > 0 ? "auto-indicator active" : "auto-indicator";
+  
+  document.getElementById('auto-pack-lbl').textContent = autoPackRate > 0 ? `Auto: ${autoPackRate}/s` : "Auto: Off";
+  document.getElementById('auto-pack-lbl').className = autoPackRate > 0 ? "auto-indicator active" : "auto-indicator";
+  
+  document.getElementById('auto-ship-lbl').textContent = autoShipRate > 0 ? `Auto: ${autoShipRate.toFixed(1)}/s` : "Auto: Off";
+  document.getElementById('auto-ship-lbl').className = autoShipRate > 0 ? "auto-indicator active" : "auto-indicator";
+  
+  const totalRate = autoMakeRate + autoPackRate + autoShipRate * boxSize;
+  document.getElementById('factory-total-rate').textContent = totalRate.toFixed(1);
+
+  document.getElementById('val-auto-make-rate').textContent = `${autoMakeRate}/s`;
+  document.getElementById('cost-auto-make').textContent = costAutoMake;
+  document.getElementById('btn-buy-auto-make').disabled = fCash < costAutoMake;
+
+  document.getElementById('val-auto-pack-rate').textContent = `${autoPackRate}/s`;
+  document.getElementById('cost-auto-pack').textContent = costAutoPack;
+  document.getElementById('btn-buy-auto-pack').disabled = fCash < costAutoPack;
+
+  document.getElementById('val-auto-ship-rate').textContent = `${autoShipRate.toFixed(1)}/s`;
+  document.getElementById('cost-auto-ship').textContent = costAutoShip;
+  document.getElementById('btn-buy-auto-ship').disabled = fCash < costAutoShip;
+
+  const speedPct = Math.round((conveyorSpeedMult - 1.0) * 100);
+  document.getElementById('val-speed-boost').textContent = speedPct;
+  document.getElementById('cost-speed').textContent = costSpeed;
+  document.getElementById('btn-buy-speed').disabled = fCash < costSpeed;
+
+  const nextTier = PRODUCT_TIERS[productTier + 1];
+  if (nextTier) {
+    document.getElementById('val-next-product').textContent = `${nextTier.emoji} ${nextTier.name}`;
+    document.getElementById('cost-tier').textContent = costTier;
+    document.getElementById('btn-buy-tier').disabled = fCash < costTier;
+  } else {
+    document.getElementById('val-next-product').textContent = "MAXED OUT";
+    document.getElementById('cost-tier').textContent = "---";
+    document.getElementById('btn-buy-tier').disabled = true;
+  }
+
+  document.getElementById('val-next-box-size').textContent = boxSize + 5;
+  document.getElementById('cost-box-size').textContent = costBoxSize;
+  document.getElementById('btn-buy-box-size').disabled = fCash < costBoxSize;
+}
+
+// Save/Load States
+function saveFactoryGame() {
+  const data = {
+    fCash,
+    fXp,
+    fLevel,
+    fName,
+    stockUnpacked,
+    stockPacked,
+    productTier,
+    boxSize,
+    conveyorSpeedMult,
+    autoMakeRate,
+    autoPackRate,
+    autoShipRate,
+    costAutoMake,
+    costAutoPack,
+    costAutoShip,
+    costSpeed,
+    costTier,
+    costBoxSize,
+    unlockedAchievements
+  };
+  localStorage.setItem('fb_save', JSON.stringify(data));
+}
+
+function loadFactoryGame() {
+  try {
+    const saved = localStorage.getItem('fb_save');
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    fCash = data.fCash ?? 0;
+    fXp = data.fXp ?? 0;
+    fLevel = data.fLevel ?? 1;
+    fName = data.fName ?? "Apprentice's Shop";
+    stockUnpacked = data.stockUnpacked ?? 0;
+    stockPacked = data.stockPacked ?? 0;
+    productTier = data.productTier ?? 0;
+    boxSize = data.boxSize ?? 5;
+    conveyorSpeedMult = data.conveyorSpeedMult ?? 1.0;
+    autoMakeRate = data.autoMakeRate ?? 0;
+    autoPackRate = data.autoPackRate ?? 0;
+    autoShipRate = data.autoShipRate ?? 0;
+    costAutoMake = data.costAutoMake ?? 25;
+    costAutoPack = data.costAutoPack ?? 75;
+    costAutoShip = data.costAutoShip ?? 150;
+    costSpeed = data.costSpeed ?? 50;
+    costTier = data.costTier ?? 100;
+    costBoxSize = data.costBoxSize ?? 120;
+    unlockedAchievements = data.unlockedAchievements ?? [];
+  } catch(e) {
+    console.error("Error loading factory save:", e);
+  }
+}
+
+// Main tick loop
+function factoryTick(timestamp) {
+  if (!factoryActive) return;
+  if (!factoryLastTime) factoryLastTime = timestamp;
+  let dt = (timestamp - factoryLastTime) / 1000;
+  factoryLastTime = timestamp;
+  
+  if (dt > 1.0) dt = 1.0;
+
+  const spdMult = getSpeedMultiplier();
+
+  // 1. Manual tasks progress bars
+  if (makeIsRunning) {
+    makeProgress += (100 / (MAKE_BASE_DUR / spdMult)) * dt;
+    if (makeProgress >= 100) {
+      makeProgress = 0;
+      makeIsRunning = false;
+      stockUnpacked++;
+      sfx.play('make');
+      createFloater('btn-action-make', "+1 Product", "#3498db");
+      checkAchievements();
+    }
+    document.getElementById('pb-make').style.width = `${makeProgress}%`;
+  } else {
+    document.getElementById('pb-make').style.width = '0%';
+  }
+
+  if (packIsRunning) {
+    packProgress += (100 / (PACK_BASE_DUR / spdMult)) * dt;
+    if (packProgress >= 100) {
+      packProgress = 0;
+      packIsRunning = false;
+      if (Math.floor(stockUnpacked) >= boxSize) {
+        stockUnpacked -= boxSize;
+        stockPacked++;
+        sfx.play('pack');
+        createFloater('btn-action-pack', "+1 Box", "#e67e22");
+        checkAchievements();
+      } else {
+        sfx.play('error');
+        createFloater('task-pack', "Interrupted! Low Stock", "#e74c3c");
+      }
+    }
+    document.getElementById('pb-pack').style.width = `${packProgress}%`;
+  } else {
+    document.getElementById('pb-pack').style.width = '0%';
+  }
+
+  if (shipIsRunning) {
+    shipProgress += (100 / (SHIP_BASE_DUR / spdMult)) * dt;
+    if (shipProgress >= 100) {
+      shipProgress = 0;
+      shipIsRunning = false;
+      if (stockPacked >= 1) {
+        stockPacked--;
+        deliverBoxes(1, true);
+      } else {
+        sfx.play('error');
+        createFloater('task-ship', "Interrupted! No Box", "#e74c3c");
+      }
+    }
+    document.getElementById('pb-ship').style.width = `${shipProgress}%`;
+  } else {
+    document.getElementById('pb-ship').style.width = '0%';
+  }
+
+  // 2. Automation processing
+  if (autoMakeRate > 0) {
+    stockUnpacked += autoMakeRate * dt;
+  }
+
+  if (autoPackRate > 0 && Math.floor(stockUnpacked) > 0) {
+    accumAutoPack += autoPackRate * dt;
+    let unitsToPack = Math.min(Math.floor(accumAutoPack), Math.floor(stockUnpacked));
+    if (unitsToPack > 0) {
+      stockUnpacked -= unitsToPack;
+      accumAutoPack -= unitsToPack;
+      
+      partiallyPackedUnits += unitsToPack;
+      while (partiallyPackedUnits >= boxSize) {
+        partiallyPackedUnits -= boxSize;
+        stockPacked++;
+        createFloater('task-pack', "+1 Box (Auto)", "#f39c12");
+      }
+    }
+  }
+
+  if (autoShipRate > 0 && stockPacked > 0) {
+    accumAutoShip += autoShipRate * dt;
+    let boxesToShip = Math.min(Math.floor(accumAutoShip), stockPacked);
+    if (boxesToShip > 0) {
+      stockPacked -= boxesToShip;
+      accumAutoShip -= boxesToShip;
+      deliverBoxes(boxesToShip, false);
+    }
+  }
+
+  // Auto-save every 10 seconds approximately
+  if (Math.random() < 0.002) {
+    saveFactoryGame();
+  }
+
+  updateFactoryUI();
+  factoryAnimId = requestAnimationFrame(factoryTick);
+}
+
+function initFactoryBoss() {
+  loadFactoryGame();
+  factoryActive = true;
+  factoryLastTime = 0;
+  accumAutoPack = 0;
+  accumAutoShip = 0;
+  makeIsRunning = false;
+  packIsRunning = false;
+  shipIsRunning = false;
+  
+  // Set default factory name if none set
+  if (fName === "Apprentice's Shop" || !fName) {
+    const names = ["Robo Assembly", "Gear Works", "Micro Fab", "Apex Mfg", "Widgetry Labs"];
+    fName = names[Math.floor(Math.random() * names.length)];
+  }
+
+  renderAchievements();
+  updateFactoryUI();
+  factoryAnimId = requestAnimationFrame(factoryTick);
+}
+
+function exitFactoryBoss() {
+  saveFactoryGame();
+  factoryActive = false;
+  if (factoryAnimId) cancelAnimationFrame(factoryAnimId);
+}
+

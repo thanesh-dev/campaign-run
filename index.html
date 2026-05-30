@@ -12,8 +12,39 @@
 </head>
 <body>
 
+  <!-- HUB SCREEN (Entry point) -->
+  <div id="hub-screen" class="screen active">
+    <div class="screen-bg"></div>
+    <div class="parallax-stars" id="hub-stars"></div>
+    <div class="hub-content">
+      <div class="hub-header">
+        <span class="hub-logo-icon">🎮</span>
+        <h1 class="hub-title">Game Portal</h1>
+        <p class="hub-subtitle">Choose Your Adventure</p>
+      </div>
+      
+      <div class="hub-cards">
+        <!-- Campaign Run Card -->
+        <div class="hub-card" id="card-campaign">
+          <div class="hub-card-icon">🗳️</div>
+          <h2 class="hub-card-title">Campaign Run</h2>
+          <p class="hub-card-desc">An exciting endless runner through the streets of Tamil Nadu. Collect votes, dodge obstacles, and campaign to victory!</p>
+          <button class="btn-hub" id="btn-goto-campaign">Play Now ▶</button>
+        </div>
+
+        <!-- Factory Boss Card -->
+        <div class="hub-card" id="card-factory">
+          <div class="hub-card-icon">🏭</div>
+          <h2 class="hub-card-title">Factory Boss</h2>
+          <p class="hub-card-desc">Start from a humble workshop. Make products, pack boxes, deliver orders, and automate your way to a manufacturing empire!</p>
+          <button class="btn-hub" id="btn-goto-factory">Play Now ▶</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- SCREENS -->
-  <div id="start-screen" class="screen active">
+  <div id="start-screen" class="screen">
     <div class="screen-bg"></div>
     <div class="parallax-stars" id="stars"></div>
     <div class="start-content">
@@ -48,6 +79,10 @@
 
       <button class="btn-leaderboard" id="btn-leaderboard-open">
         🏆 Leaderboard
+      </button>
+
+      <button class="btn-leaderboard secondary" id="btn-campaign-back" style="margin-top: -10px; width: auto; padding: 10px 20px;">
+        🏠 Back to Portal
       </button>
 
       <div class="controls-hint">
@@ -126,13 +161,187 @@
     </div>
   </div>
 
-  <!-- LEADERBOARD SCREEN -->
-  <div id="leaderboard-screen" class="screen overlay">
-    <div class="overlay-card leaderboard-card">
-      <h2>🏆 Leaderboard</h2>
-      <div id="leaderboard-list"></div>
-      <button class="btn-overlay secondary" id="btn-leaderboard-close">✕ Close</button>
+  <!-- FACTORY BOSS SCREEN -->
+  <div id="factory-screen" class="screen">
+    <div class="screen-bg"></div>
+    
+    <!-- Factory HUD -->
+    <div class="factory-hud">
+      <div class="f-hud-left">
+        <button class="btn-back-hub" id="btn-factory-back">🏠 Exit</button>
+        <div class="f-name-container">
+          <span class="f-name" id="factory-name">My Workshop</span>
+          <span class="f-rank" id="factory-rank">Apprentice</span>
+        </div>
+      </div>
+      <div class="f-hud-center">
+        <div class="f-xp-container">
+          <div class="f-xp-label">Level <span id="factory-level">1</span></div>
+          <div class="f-xp-bar-bg">
+            <div class="f-xp-bar-fill" id="factory-xp-fill" style="width: 0%"></div>
+          </div>
+          <div class="f-xp-value"><span id="factory-current-xp">0</span> / <span id="factory-next-xp">100</span> XP</div>
+        </div>
+      </div>
+      <div class="f-hud-right">
+        <div class="f-stat-item">
+          <span class="f-stat-lbl">CASH</span>
+          <span class="f-stat-val" id="factory-cash">$0.00</span>
+        </div>
+      </div>
     </div>
+
+    <!-- Factory Body Grid -->
+    <div class="factory-container">
+      <!-- Left Panel: Operations (Dopamine Loop) -->
+      <div class="factory-panel ops-panel">
+        <div class="panel-header">
+          <h3>🏭 Production Line</h3>
+          <span class="auto-rate-lbl">Total Rate: <span id="factory-total-rate">0</span>/s</span>
+        </div>
+        
+        <div class="factory-tasks">
+          <!-- Task 1: Make Products -->
+          <div class="task-card" id="task-make">
+            <div class="task-info">
+              <span class="task-emoji">🔧</span>
+              <div class="task-details">
+                <span class="task-name">Manufacture <span class="product-tier-name" id="val-product-name">Widgets</span></span>
+                <span class="task-stock" id="val-stock-unpacked">0 in stock</span>
+              </div>
+            </div>
+            <div class="progress-container">
+              <div class="progress-bar" id="pb-make"></div>
+            </div>
+            <div class="task-actions">
+              <button class="btn-action" id="btn-action-make">Make ($<span id="val-make-reward">1</span>/ea)</button>
+              <span class="auto-indicator" id="auto-make-lbl">Auto: Off</span>
+            </div>
+          </div>
+
+          <!-- Task 2: Pack Boxes -->
+          <div class="task-card" id="task-pack">
+            <div class="task-info">
+              <span class="task-emoji">📦</span>
+              <div class="task-details">
+                <span class="task-name">Pack Boxes (<span id="val-box-size">5</span> units/box)</span>
+                <span class="task-stock" id="val-stock-packed">0 boxes packed</span>
+              </div>
+            </div>
+            <div class="progress-container">
+              <div class="progress-bar" id="pb-pack"></div>
+            </div>
+            <div class="task-actions">
+              <button class="btn-action" id="btn-action-pack">Pack Boxes</button>
+              <span class="auto-indicator" id="auto-pack-lbl">Auto: Off</span>
+            </div>
+          </div>
+
+          <!-- Task 3: Ship Orders -->
+          <div class="task-card" id="task-ship">
+            <div class="task-info">
+              <span class="task-emoji">🚚</span>
+              <div class="task-details">
+                <span class="task-name">Deliver Orders</span>
+                <span class="task-stock" id="val-ship-desc">Ship packed boxes</span>
+              </div>
+            </div>
+            <div class="progress-container">
+              <div class="progress-bar" id="pb-ship"></div>
+            </div>
+            <div class="task-actions">
+              <button class="btn-action" id="btn-action-ship">Deliver ($<span id="val-ship-reward">10</span> + <span id="val-ship-xp">10</span> XP)</button>
+              <span class="auto-indicator" id="auto-ship-lbl">Auto: Off</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Panel: Management & Upgrades -->
+      <div class="factory-panel upgrades-panel">
+        <div class="upgrades-tabs">
+          <button class="tab-btn active" data-tab="tab-automation">🤖 Automation</button>
+          <button class="tab-btn" data-tab="tab-efficiency">⚡ Efficiency</button>
+          <button class="tab-btn" data-tab="tab-achievements">🏆 Milestones</button>
+        </div>
+
+        <div class="tab-contents">
+          <!-- Automation Content -->
+          <div class="tab-pane active" id="tab-automation">
+            <div class="upgrade-list">
+              <!-- Auto Maker -->
+              <div class="upgrade-item" id="upg-auto-make">
+                <div class="upg-info">
+                  <h4>Assemble-o-Matic 3000</h4>
+                  <p>Auto-manufactures products. Currently: <span id="val-auto-make-rate">0</span>/sec</p>
+                </div>
+                <button class="btn-buy" id="btn-buy-auto-make">Buy ($<span id="cost-auto-make">25</span>)</button>
+              </div>
+
+              <!-- Auto Packer -->
+              <div class="upgrade-item" id="upg-auto-pack">
+                <div class="upg-info">
+                  <h4>Packing Robot Arm</h4>
+                  <p>Auto-packs products into boxes. Currently: <span id="val-auto-pack-rate">0</span>/sec</p>
+                </div>
+                <button class="btn-buy" id="btn-buy-auto-pack">Buy ($<span id="cost-auto-pack">75</span>)</button>
+              </div>
+
+              <!-- Auto Shipper -->
+              <div class="upgrade-item" id="upg-auto-ship">
+                <div class="upg-info">
+                  <h4>Courier Drone</h4>
+                  <p>Auto-ships packed boxes. Currently: <span id="val-auto-ship-rate">0</span>/sec</p>
+                </div>
+                <button class="btn-buy" id="btn-buy-auto-ship">Buy ($<span id="cost-auto-ship">150</span>)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Efficiency Content -->
+          <div class="tab-pane" id="tab-efficiency">
+            <div class="upgrade-list">
+              <!-- Speed Upgrades -->
+              <div class="upgrade-item" id="upg-speed">
+                <div class="upg-info">
+                  <h4>Conveyor Belts</h4>
+                  <p>Speeds up all operations by <span id="val-speed-boost">0</span>%</p>
+                </div>
+                <button class="btn-buy" id="btn-buy-speed">Upgrade ($<span id="cost-speed">50</span>)</button>
+              </div>
+
+              <!-- Product Upgrade -->
+              <div class="upgrade-item" id="upg-tier">
+                <div class="upg-info">
+                  <h4>R&D Department</h4>
+                  <p>Unlock new product: <span id="val-next-product">Toys</span> (+100% Value)</p>
+                </div>
+                <button class="btn-buy" id="btn-buy-tier">Upgrade ($<span id="cost-tier">100</span>)</button>
+              </div>
+
+              <!-- Box Capacity Upgrade -->
+              <div class="upgrade-item" id="upg-box-size">
+                <div class="upg-info">
+                  <h4>Larger Shipping Crates</h4>
+                  <p>Increase box capacity to <span id="val-next-box-size">10</span> (gives +50% Delivery cash multiplier)</p>
+                </div>
+                <button class="btn-buy" id="btn-buy-box-size">Upgrade ($<span id="cost-box-size">120</span>)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Achievements Content -->
+          <div class="tab-pane" id="tab-achievements">
+            <div class="achievements-list" id="factory-achievements-list">
+              <!-- Populated dynamically via JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating text container for floating cash/XP animations -->
+    <div id="factory-floaters" class="floaters-container"></div>
   </div>
 
   <script src="game.js"></script>
