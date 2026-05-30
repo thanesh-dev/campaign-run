@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="description" content="Vote Quest: Tamil Nadu Run - A fun endless runner game set in the streets of Tamil Nadu. Collect votes, dodge obstacles, and ride to victory!" />
+  <title>🗳️ Vote Quest: Tamil Nadu Run</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Noto+Sans+Tamil:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- SCREENS -->
+  <div id="start-screen" class="screen active">
+    <div class="screen-bg"></div>
+    <div class="parallax-stars" id="stars"></div>
+    <div class="start-content">
+      <div class="game-logo">
+        <span class="logo-icon">🗳️</span>
+        <h1 class="logo-title">Vote Quest</h1>
+        <p class="logo-subtitle">Tamil Nadu Run</p>
+        <p class="logo-tamil">தமிழ் நாடு ஓட்டம்</p>
+      </div>
+
+      <div class="map-select">
+        <p class="map-label">Choose Your City</p>
+        <div class="map-buttons">
+          <button class="map-btn active" data-map="chennai" id="map-chennai">
+            <span class="map-icon">🏙️</span>
+            <span class="map-name">Chennai</span>
+          </button>
+          <button class="map-btn" data-map="coimbatore" id="map-coimbatore">
+            <span class="map-icon">🏭</span>
+            <span class="map-name">Coimbatore</span>
+          </button>
+          <button class="map-btn" data-map="madurai" id="map-madurai">
+            <span class="map-icon">🏛️</span>
+            <span class="map-name">Madurai</span>
+          </button>
+        </div>
+      </div>
+
+      <button class="btn-play" id="btn-play">
+        <span>▶ START CAMPAIGN</span>
+      </button>
+
+      <button class="btn-leaderboard" id="btn-leaderboard-open">
+        🏆 Leaderboard
+      </button>
+
+      <div class="controls-hint">
+        <span>⬆ Jump</span>
+        <span>⬇ Slide</span>
+        <span>←→ Switch Lane</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="game-screen" class="screen">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-left">
+        <div class="hud-score">
+          <span class="hud-label">SCORE</span>
+          <span class="hud-value" id="hud-score">0</span>
+        </div>
+        <div class="hud-votes">
+          <span class="hud-label">🗳️ VOTES</span>
+          <span class="hud-value" id="hud-votes">0</span>
+        </div>
+      </div>
+      <div class="hud-center">
+        <div class="hud-city" id="hud-city">CHENNAI</div>
+        <div class="hud-cycle" id="hud-cycle">☀️ Day</div>
+      </div>
+      <div class="hud-right">
+        <div class="hud-powerup" id="hud-powerup"></div>
+        <button class="btn-pause" id="btn-pause">⏸</button>
+      </div>
+    </div>
+
+    <!-- POWER-UP Banner -->
+    <div id="powerup-banner" class="powerup-banner hidden">
+      <span id="powerup-text">🚁 HELICOPTER ACTIVATED!</span>
+    </div>
+  </div>
+
+  <!-- PAUSE SCREEN -->
+  <div id="pause-screen" class="screen overlay">
+    <div class="overlay-card">
+      <h2>⏸ PAUSED</h2>
+      <button class="btn-overlay" id="btn-resume">▶ Resume</button>
+      <button class="btn-overlay secondary" id="btn-quit">🏠 Main Menu</button>
+    </div>
+  </div>
+
+  <!-- GAME OVER SCREEN -->
+  <div id="gameover-screen" class="screen overlay">
+    <div class="overlay-card">
+      <h2 id="gameover-title">💥 Campaign Over!</h2>
+      <div class="result-grid">
+        <div class="result-item">
+          <span class="result-label">FINAL SCORE</span>
+          <span class="result-value" id="result-score">0</span>
+        </div>
+        <div class="result-item">
+          <span class="result-label">🗳️ VOTES WON</span>
+          <span class="result-value" id="result-votes">0</span>
+        </div>
+        <div class="result-item">
+          <span class="result-label">DISTANCE</span>
+          <span class="result-value" id="result-dist">0m</span>
+        </div>
+      </div>
+      <div class="name-input-area" id="name-input-area">
+        <input type="text" id="player-name" placeholder="Enter your name..." maxlength="16" />
+        <button class="btn-overlay" id="btn-save-score">💾 Save Score</button>
+      </div>
+      <button class="btn-overlay" id="btn-restart">🔄 Run Again</button>
+      <button class="btn-overlay secondary" id="btn-menu">🏠 Main Menu</button>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD SCREEN -->
+  <div id="leaderboard-screen" class="screen overlay">
+    <div class="overlay-card leaderboard-card">
+      <h2>🏆 Leaderboard</h2>
+      <div id="leaderboard-list"></div>
+      <button class="btn-overlay secondary" id="btn-leaderboard-close">✕ Close</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
