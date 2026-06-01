@@ -39,6 +39,14 @@
           <p class="hub-card-desc">Start from a humble workshop. Make products, pack boxes, deliver orders, and automate your way to a manufacturing empire!</p>
           <button class="btn-hub" id="btn-goto-factory">Play Now ▶</button>
         </div>
+
+        <!-- Galactic Campaign Card -->
+        <div class="hub-card" id="card-galactic">
+          <div class="hub-card-icon">🚀</div>
+          <h2 class="hub-card-title">Galactic Campaign</h2>
+          <p class="hub-card-desc">Take the campaign to the stars! Pilot a starship, blast asteroid fields, collect cosmic vote credits, and defeat the alien mothership.</p>
+          <button class="btn-hub" id="btn-goto-galactic">Play Now ▶</button>
+        </div>
       </div>
     </div>
   </div>
@@ -169,6 +177,86 @@
         <!-- Populated dynamically via JS -->
       </div>
       <button class="btn-overlay secondary" id="btn-leaderboard-close">🏠 Close</button>
+    </div>
+  </div>
+
+  <!-- GALACTIC CAMPAIGN SCREEN -->
+  <div id="galactic-screen" class="screen">
+    <div class="parallax-stars" id="galactic-stars"></div>
+    <canvas id="galacticCanvas"></canvas>
+    
+    <!-- Galactic HUD -->
+    <div class="galactic-hud">
+      <div class="g-hud-left">
+        <button class="btn-back-hub" id="btn-galactic-back">🏠 Exit</button>
+        <div class="g-stats">
+          <span class="g-score-lbl">SCORE: <span id="galactic-score">0</span></span>
+          <span class="g-votes-lbl">🗳️ CREDITS: <span id="galactic-votes">0</span></span>
+        </div>
+      </div>
+      <div class="g-hud-right">
+        <div class="g-health-container">
+          <span class="g-health-lbl">SHIELD:</span>
+          <div class="g-health-bar-bg">
+            <div class="g-health-bar-fill" id="galactic-shield-fill" style="width: 100%"></div>
+          </div>
+          <button class="btn-pause" id="btn-g-hangar" style="font-size:0.85rem; width:auto; padding:0 10px; margin-left:12px;">🔧 Hangar</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Game Over overlay for Galactic -->
+    <div id="galactic-gameover" class="galactic-overlay hidden">
+      <div class="overlay-card">
+        <h2 id="g-gameover-title">💥 Ship Destroyed!</h2>
+        <p>You collected <span id="g-result-votes" style="color:var(--gold); font-weight:800;">0</span> Vote Credits.</p>
+        <button class="btn-overlay" id="btn-galactic-restart">🔄 Respawn</button>
+        <button class="btn-overlay secondary" id="btn-galactic-menu">🏠 Exit to Portal</button>
+      </div>
+    </div>
+
+    <!-- Victory overlay for Galactic -->
+    <div id="galactic-victory" class="galactic-overlay hidden">
+      <div class="overlay-card">
+        <h2>🏆 Landslide Victory!</h2>
+        <p>You defeated the Alien Mothership and secured the galaxy's votes!</p>
+        <button class="btn-overlay" id="btn-galactic-victory-ok">🏠 Return to Portal</button>
+      </div>
+    </div>
+
+    <!-- Hangar Shop UI overlay -->
+    <div id="galactic-shop" class="galactic-shop-container hidden">
+      <div class="g-shop-card">
+        <h3>🚀 Hangar & Upgrades</h3>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-top:-10px;">Upgrade systems using Vote Credits</p>
+        <div class="g-shop-items">
+          <!-- Weapon Upgrade -->
+          <div class="g-shop-item">
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span>Weapon Level</span>
+              <span style="font-size:0.7rem; color:var(--galactic-blue);" id="g-desc-weapon">Level 1 (Single Shot)</span>
+            </div>
+            <button id="btn-g-buy-weapon">Buy ($<span id="g-cost-weapon">30</span>)</button>
+          </div>
+          <!-- Shield Upgrade -->
+          <div class="g-shop-item">
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span>Max Shield</span>
+              <span style="font-size:0.7rem; color:var(--galactic-pink);" id="g-desc-shield">100 HP</span>
+            </div>
+            <button id="btn-g-buy-shield">Buy ($<span id="g-cost-shield">25</span>)</button>
+          </div>
+          <!-- Speed Upgrade -->
+          <div class="g-shop-item">
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span>Thrusters Speed</span>
+              <span style="font-size:0.7rem; color:var(--galactic-purple);" id="g-desc-speed">Level 1</span>
+            </div>
+            <button id="btn-g-buy-speed">Buy ($<span id="g-cost-speed">20</span>)</button>
+          </div>
+        </div>
+        <button class="btn-overlay" id="btn-g-close-shop">Close Hangar</button>
+      </div>
     </div>
   </div>
 

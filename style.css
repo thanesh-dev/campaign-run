@@ -1232,3 +1232,223 @@ html, body {
   }
 }
 
+/* =============================================
+   GALACTIC CAMPAIGN GAME SCREEN
+   ============================================= */
+:root {
+  --galactic-purple: #8a2be2;
+  --galactic-pink: #ff007f;
+  --galactic-blue: #00ffff;
+  --galactic-yellow: #ffff00;
+}
+
+#card-galactic:hover {
+  border-color: var(--galactic-pink);
+  background: rgba(255, 0, 127, 0.06);
+  transform: translateY(-8px);
+  box-shadow: 0 12px 30px rgba(255, 0, 127, 0.15);
+}
+#card-galactic:hover .hub-card-icon {
+  transform: scale(1.15) rotate(-3deg);
+}
+.hub-card #btn-goto-galactic {
+  background: linear-gradient(135deg, var(--galactic-blue), var(--galactic-pink));
+  color: #000;
+}
+.hub-card #btn-goto-galactic:hover {
+  box-shadow: 0 6px 20px rgba(255, 0, 127, 0.4);
+}
+
+#galactic-screen {
+  background: #050510;
+  overflow: hidden;
+}
+#galacticCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.galactic-hud {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 80px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 24px;
+  background: rgba(5, 5, 16, 0.8);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  z-index: 10;
+  color: #fff;
+  font-family: 'Outfit', sans-serif;
+}
+.g-hud-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.g-stats {
+  display: flex;
+  gap: 24px;
+}
+.g-score-lbl, .g-votes-lbl {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.g-score-lbl span {
+  color: var(--galactic-blue);
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+.g-votes-lbl span {
+  color: var(--galactic-yellow);
+  text-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+}
+.g-hud-right {
+  display: flex;
+  align-items: center;
+}
+.g-health-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.g-health-lbl {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+.g-health-bar-bg {
+  width: 180px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.g-health-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--galactic-pink), var(--galactic-purple));
+  box-shadow: 0 0 10px rgba(255, 0, 127, 0.6);
+  border-radius: 6px;
+  transition: width 0.1s ease;
+}
+
+/* Overlays */
+.galactic-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 5, 16, 0.85);
+  backdrop-filter: blur(10px);
+  z-index: 20;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+.galactic-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Hangar / Shop UI */
+.galactic-shop-container {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 5, 16, 0.85);
+  backdrop-filter: blur(15px);
+  z-index: 25;
+  transition: opacity 0.3s ease;
+}
+.galactic-shop-container.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.g-shop-card {
+  background: rgba(20, 15, 35, 0.6);
+  border: 1.5px solid var(--galactic-purple);
+  border-radius: 28px;
+  padding: 36px 28px;
+  width: min(440px, 92vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 0 30px rgba(138, 43, 226, 0.3);
+  backdrop-filter: blur(25px);
+  animation: cardPop 0.4s cubic-bezier(.2,.8,.3,1) both;
+}
+.g-shop-card h3 {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, var(--galactic-blue), var(--galactic-pink));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.g-shop-items {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.g-shop-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  color: #fff;
+  font-weight: 600;
+}
+.g-shop-item span {
+  font-size: 0.95rem;
+}
+.g-shop-item span span {
+  color: var(--galactic-blue);
+  font-weight: 800;
+}
+.g-shop-item button {
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  border-radius: 10px;
+  min-width: 100px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--galactic-purple), var(--galactic-pink));
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.g-shop-item button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 0, 127, 0.4);
+}
+.g-shop-item button:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .g-stats {
+    gap: 12px;
+  }
+  .g-score-lbl, .g-votes-lbl {
+    font-size: 0.85rem;
+  }
+  .g-health-bar-bg {
+    width: 100px;
+  }
+}
+

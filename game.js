@@ -3,7 +3,7 @@
 
 // ─── STARS ───────────────────────────────────────────────────────────────────
 (function createStars() {
-  ['stars', 'hub-stars'].forEach(id => {
+  ['stars', 'hub-stars', 'galactic-stars'].forEach(id => {
     const c = document.getElementById(id);
     if (!c) return;
     for (let i = 0; i < 80; i++) {
@@ -872,6 +872,36 @@ document.getElementById('btn-factory-back').onclick = () => {
   showScreen('hub-screen');
 };
 
+document.getElementById('btn-goto-galactic').onclick = () => {
+  sfx.play('click');
+  initGalactic();
+  showScreen('galactic-screen');
+};
+
+document.getElementById('btn-galactic-back').onclick = () => {
+  sfx.play('click');
+  exitGalactic();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-galactic-restart').onclick = () => {
+  sfx.play('click');
+  document.getElementById('galactic-gameover').classList.add('hidden');
+  startGalacticGame();
+};
+
+document.getElementById('btn-galactic-menu').onclick = () => {
+  sfx.play('click');
+  exitGalactic();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-galactic-victory-ok').onclick = () => {
+  sfx.play('click');
+  exitGalactic();
+  showScreen('hub-screen');
+};
+
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 initCanvas();
 showScreen('hub-screen');
@@ -934,8 +964,8 @@ const sfx = {
           osc.type = 'sine';
           osc.frequency.setValueAtTime(idx === 0 ? 1200 : 1500, now + delay);
           gain.gain.setValueAtTime(0.05, now + delay);
-          gain.gain.linearRampToValueAtTime(0, now + delay + 0.2);
-          osc.start(now + delay); osc.stop(now + delay + 0.2);
+          gain.gain.linearRampToValueAtTime(0, now + delay + 0.25);
+          osc.start(now + delay); osc.stop(now + delay + 0.25);
         });
       } else if (type === 'level') {
         [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
@@ -956,6 +986,36 @@ const sfx = {
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(110, now);
         gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
+      } else if (type === 'laser') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+        gain.gain.setValueAtTime(0.03, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+      } else if (type === 'explosion') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(120, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.3);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.3);
+        osc.start(now); osc.stop(now + 0.3);
+      } else if (type === 'shield') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(350, now);
+        osc.frequency.exponentialRampToValueAtTime(950, now + 0.2);
+        gain.gain.setValueAtTime(0.05, now);
         gain.gain.linearRampToValueAtTime(0, now + 0.2);
         osc.start(now); osc.stop(now + 0.2);
       }
@@ -1582,5 +1642,989 @@ function exitFactoryBoss() {
   saveFactoryGame();
   factoryActive = false;
   if (factoryAnimId) cancelAnimationFrame(factoryAnimId);
+}
+
+
+// ==============================================================================
+// ─── GALACTIC CAMPAIGN GAME MODULE ────────────────────────────────────────────
+// ==============================================================================
+let galacticActive = false;
+let galacticAnimId = null;
+let galacticLastTime = 0;
+let gCanvas = null;
+let gCtx = null;
+let gW = 0, gH = 0;
+
+// Upgrades & Progress state (saved in gc_save)
+let gcVotes = 0;
+let gcHighscore = 0;
+let upgWeapon = 1;
+let upgShield = 1;
+let upgSpeed = 1;
+
+// Costs
+const WEAPON_COSTS = [0, 30, 75, 150];
+const SHIELD_COSTS = [0, 25, 50, 100, 200];
+const SPEED_COSTS = [0, 20, 45, 90];
+
+// Game Objects
+let gPlayer = { x: 0, y: 0, size: 20, shield: 100, maxShield: 100, speed: 5 };
+let gLasers = [];
+let gEnemyLasers = [];
+let gEnemies = [];
+let gAsteroids = [];
+let gPowerups = [];
+let gParticles = [];
+let gBackgroundStars = [];
+
+// Game play parameters
+let gScore = 0;
+let gVotesEarned = 0;
+let gState = 'idle'; // running | over | victory
+let gFrame = 0;
+let bossSpawned = false;
+let bossShip = null;
+let gScreenShake = 0;
+let fireCooldown = 0;
+
+// Controls
+let keys = {};
+let pointerX = null, pointerY = null, isPointerDown = false;
+
+// Upgrades UI hooks
+function toggleGalacticShop(show) {
+  const shop = document.getElementById('galactic-shop');
+  if (show) {
+    sfx.init();
+    updateHangarUI();
+    shop.classList.remove('hidden');
+  } else {
+    shop.classList.add('hidden');
+    saveGalacticGame();
+  }
+}
+
+function updateHangarUI() {
+  document.getElementById('galactic-votes').textContent = gcVotes;
+  
+  // Weapon UI
+  const weaponLvl = upgWeapon;
+  const weaponDesc = weaponLvl === 1 ? "Level 1 (Single Shot)" : weaponLvl === 2 ? "Level 2 (Dual Shot)" : weaponLvl === 3 ? "Level 3 (Triple Spread)" : "Level 4 (Plasma Stream!)";
+  document.getElementById('g-desc-weapon').textContent = weaponDesc;
+  const weaponCost = WEAPON_COSTS[weaponLvl] || 0;
+  document.getElementById('g-cost-weapon').textContent = weaponCost > 0 ? weaponCost : "MAXED";
+  document.getElementById('btn-g-buy-weapon').disabled = weaponCost === 0 || gcVotes < weaponCost;
+  
+  // Shield UI
+  const shieldLvl = upgShield;
+  const maxShieldVal = 100 + (shieldLvl - 1) * 50;
+  document.getElementById('g-desc-shield').textContent = `${maxShieldVal} HP (Lvl ${shieldLvl})`;
+  const shieldCost = SHIELD_COSTS[shieldLvl] || 0;
+  document.getElementById('g-cost-shield').textContent = shieldCost > 0 ? shieldCost : "MAXED";
+  document.getElementById('btn-g-buy-shield').disabled = shieldCost === 0 || gcVotes < shieldCost;
+  
+  // Speed UI
+  const speedLvl = upgSpeed;
+  const speedVal = 5 + (speedLvl - 1) * 2;
+  document.getElementById('g-desc-speed').textContent = `Speed ${speedVal} (Lvl ${speedLvl})`;
+  const speedCost = SPEED_COSTS[speedLvl] || 0;
+  document.getElementById('g-cost-speed').textContent = speedCost > 0 ? speedCost : "MAXED";
+  document.getElementById('btn-g-buy-speed').disabled = speedCost === 0 || gcVotes < speedCost;
+}
+
+// Purchase upgrade
+document.getElementById('btn-g-buy-weapon').onclick = () => {
+  const cost = WEAPON_COSTS[upgWeapon];
+  if (cost && gcVotes >= cost) {
+    gcVotes -= cost;
+    upgWeapon++;
+    sfx.play('cash');
+    updateHangarUI();
+  }
+};
+
+document.getElementById('btn-g-buy-shield').onclick = () => {
+  const cost = SHIELD_COSTS[upgShield];
+  if (cost && gcVotes >= cost) {
+    gcVotes -= cost;
+    upgShield++;
+    sfx.play('cash');
+    updateHangarUI();
+  }
+};
+
+document.getElementById('btn-g-buy-speed').onclick = () => {
+  const cost = SPEED_COSTS[upgSpeed];
+  if (cost && gcVotes >= cost) {
+    gcVotes -= cost;
+    upgSpeed++;
+    sfx.play('cash');
+    updateHangarUI();
+  }
+};
+
+document.getElementById('btn-g-hangar').onclick = () => {
+  sfx.play('click');
+  toggleGalacticShop(true);
+};
+document.getElementById('btn-g-close-shop').onclick = () => {
+  sfx.play('click');
+  toggleGalacticShop(false);
+};
+
+// Save/Load
+function saveGalacticGame() {
+  const data = { gcVotes, gcHighscore, upgWeapon, upgShield, upgSpeed };
+  localStorage.setItem('gc_save', JSON.stringify(data));
+}
+
+function loadGalacticGame() {
+  try {
+    const saved = localStorage.getItem('gc_save');
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    gcVotes = data.gcVotes ?? 0;
+    gcHighscore = data.gcHighscore ?? 0;
+    upgWeapon = data.upgWeapon ?? 1;
+    upgShield = data.upgShield ?? 1;
+    upgSpeed = data.upgSpeed ?? 1;
+  } catch (e) {
+    console.error("Error loading Galactic save:", e);
+  }
+}
+
+// Spark Particles
+function createSpark(x, y, color, count = 8) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 4 + 2;
+    gParticles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: Math.random() * 3 + 1,
+      color,
+      alpha: 1,
+      decay: Math.random() * 0.03 + 0.015
+    });
+  }
+}
+
+// Start Game
+function startGalacticGame() {
+  loadGalacticGame();
+  
+  const speedVal = 5 + (upgSpeed - 1) * 2;
+  const maxShieldVal = 100 + (upgShield - 1) * 50;
+  
+  gPlayer = {
+    x: gW / 2,
+    y: gH * 0.8,
+    size: 20,
+    shield: maxShieldVal,
+    maxShield: maxShieldVal,
+    speed: speedVal,
+    weaponLvl: upgWeapon
+  };
+  
+  gLasers = [];
+  gEnemyLasers = [];
+  gEnemies = [];
+  gAsteroids = [];
+  gPowerups = [];
+  gParticles = [];
+  
+  gScore = 0;
+  gVotesEarned = 0;
+  gState = 'running';
+  gFrame = 0;
+  bossSpawned = false;
+  bossShip = null;
+  gScreenShake = 0;
+  fireCooldown = 0;
+  
+  document.getElementById('galactic-score').textContent = gScore;
+  document.getElementById('galactic-votes').textContent = gcVotes;
+  document.getElementById('galactic-shield-fill').style.width = '100%';
+  document.getElementById('galactic-gameover').classList.add('hidden');
+  document.getElementById('galactic-victory').classList.add('hidden');
+}
+
+function initGalactic() {
+  gCanvas = document.getElementById('galacticCanvas');
+  gCtx = gCanvas.getContext('2d');
+  
+  // Resize
+  gW = gCanvas.width = window.innerWidth;
+  gH = gCanvas.height = window.innerHeight;
+  
+  loadGalacticGame();
+  
+  // Starfield
+  gBackgroundStars = [];
+  for (let i = 0; i < 60; i++) {
+    gBackgroundStars.push({
+      x: Math.random() * gW,
+      y: Math.random() * gH,
+      size: Math.random() * 2 + 0.5,
+      speed: Math.random() * 3 + 1
+    });
+  }
+  
+  // Handlers
+  window.addEventListener('keydown', handleGCKeyDown);
+  window.addEventListener('keyup', handleGCKeyUp);
+  
+  gCanvas.addEventListener('pointerdown', handleGCPointerDown);
+  gCanvas.addEventListener('pointermove', handleGCPointerMove);
+  gCanvas.addEventListener('pointerup', handleGCPointerUp);
+  gCanvas.addEventListener('pointercancel', handleGCPointerUp);
+
+  galacticActive = true;
+  galacticLastTime = 0;
+  
+  startGalacticGame();
+  galacticAnimId = requestAnimationFrame(galacticTick);
+}
+
+function exitGalactic() {
+  saveGalacticGame();
+  galacticActive = false;
+  if (galacticAnimId) cancelAnimationFrame(galacticAnimId);
+  
+  window.removeEventListener('keydown', handleGCKeyDown);
+  window.removeEventListener('keyup', handleGCKeyUp);
+  if (gCanvas) {
+    gCanvas.removeEventListener('pointerdown', handleGCPointerDown);
+    gCanvas.removeEventListener('pointermove', handleGCPointerMove);
+    gCanvas.removeEventListener('pointerup', handleGCPointerUp);
+    gCanvas.removeEventListener('pointercancel', handleGCPointerUp);
+  }
+}
+
+function handleGCKeyDown(e) { keys[e.key] = true; }
+function handleGCKeyUp(e) { keys[e.key] = false; }
+function handleGCPointerDown(e) {
+  isPointerDown = true;
+  pointerX = e.clientX;
+  pointerY = e.clientY;
+}
+function handleGCPointerMove(e) {
+  if (isPointerDown) {
+    pointerX = e.clientX;
+    pointerY = e.clientY;
+  }
+}
+function handleGCPointerUp() {
+  isPointerDown = false;
+  pointerX = null;
+  pointerY = null;
+}
+
+function endGalacticGame(victory) {
+  gState = victory ? 'victory' : 'over';
+  
+  gcVotes += gVotesEarned;
+  if (gScore > gcHighscore) {
+    gcHighscore = gScore;
+  }
+  saveGalacticGame();
+  
+  if (victory) {
+    sfx.play('level');
+    document.getElementById('galactic-victory').classList.remove('hidden');
+  } else {
+    sfx.play('error');
+    document.getElementById('g-result-votes').textContent = gVotesEarned;
+    document.getElementById('galactic-gameover').classList.remove('hidden');
+  }
+}
+
+function handlePlayerFiring() {
+  if (fireCooldown > 0) {
+    fireCooldown--;
+    return;
+  }
+  
+  // Fire if Space is pressed OR pointer is down
+  if (keys[' '] || isPointerDown) {
+    sfx.play('laser');
+    
+    // Weapon configurations
+    const lvl = gPlayer.weaponLvl;
+    const baseLaserSpeed = 15;
+    
+    if (lvl === 1) {
+      gLasers.push({ x: gPlayer.x, y: gPlayer.y - 12, vx: 0, vy: -baseLaserSpeed, color: '#00ffff', size: 3 });
+    } else if (lvl === 2) {
+      gLasers.push({ x: gPlayer.x - 10, y: gPlayer.y - 4, vx: 0, vy: -baseLaserSpeed, color: '#00ffff', size: 3 });
+      gLasers.push({ x: gPlayer.x + 10, y: gPlayer.y - 4, vx: 0, vy: -baseLaserSpeed, color: '#00ffff', size: 3 });
+    } else if (lvl === 3) {
+      gLasers.push({ x: gPlayer.x, y: gPlayer.y - 12, vx: 0, vy: -baseLaserSpeed, color: '#00ffff', size: 3 });
+      gLasers.push({ x: gPlayer.x - 12, y: gPlayer.y, vx: -3, vy: -baseLaserSpeed + 1, color: '#00ffff', size: 3 });
+      gLasers.push({ x: gPlayer.x + 12, y: gPlayer.y, vx: 3, vy: -baseLaserSpeed + 1, color: '#00ffff', size: 3 });
+    } else {
+      // Plasma Stream (level 4)
+      gLasers.push({ x: gPlayer.x, y: gPlayer.y - 12, vx: 0, vy: -baseLaserSpeed - 3, color: '#ff00ff', size: 4 });
+      gLasers.push({ x: gPlayer.x - 15, y: gPlayer.y - 2, vx: -1.5, vy: -baseLaserSpeed - 1, color: '#00ffff', size: 3 });
+      gLasers.push({ x: gPlayer.x + 15, y: gPlayer.y - 2, vx: 1.5, vy: -baseLaserSpeed - 1, color: '#00ffff', size: 3 });
+    }
+    
+    // Cooldown
+    fireCooldown = lvl >= 4 ? 6 : lvl === 3 ? 9 : 12;
+  }
+}
+
+// Collision Helper
+function checkCircleCollision(c1, c2) {
+  const dx = c1.x - c2.x;
+  const dy = c1.y - c2.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  return dist < (c1.size + c2.size);
+}
+
+function playerHit(damage) {
+  gPlayer.shield -= damage;
+  gScreenShake = 12;
+  updateShieldHUD();
+  sfx.play('error');
+  createSpark(gPlayer.x, gPlayer.y, '#ff007f', 10);
+  
+  if (gPlayer.shield <= 0) {
+    gPlayer.shield = 0;
+    updateShieldHUD();
+    createSpark(gPlayer.x, gPlayer.y, '#ff00ff', 30);
+    sfx.play('explosion');
+    endGalacticGame(false);
+  }
+}
+
+function updateShieldHUD() {
+  const pct = (gPlayer.shield / gPlayer.maxShield) * 100;
+  document.getElementById('galactic-shield-fill').style.width = `${pct}%`;
+}
+
+function spawnPowerupChance(x, y) {
+  const rand = Math.random();
+  if (rand < 0.22) { // 22% chance to drop powerup
+    let type = 'vote';
+    let label = '🗳️';
+    let color = '#f1c40f';
+    const typeRand = Math.random();
+    
+    if (typeRand > 0.8) {
+      type = 'bomb';
+      label = '💣';
+      color = '#ff007f';
+    } else if (typeRand > 0.55) {
+      type = 'weapon';
+      label = '⚡';
+      color = '#00ffff';
+    } else if (typeRand > 0.3) {
+      type = 'shield';
+      label = '🛡️';
+      color = '#2ecc71';
+    }
+    
+    gPowerups.push({
+      x, y,
+      type, label, color,
+      size: 15
+    });
+  }
+}
+
+function updateGalactic(dt) {
+  gFrame++;
+  
+  if (gScreenShake > 0) gScreenShake *= 0.9;
+  
+  // Stars scroll
+  gBackgroundStars.forEach(s => {
+    s.y += s.speed;
+    if (s.y > gH) {
+      s.y = 0;
+      s.x = Math.random() * gW;
+    }
+  });
+  
+  if (gState !== 'running') return;
+  
+  // Player Movement (Desktop)
+  let dx = 0;
+  let dy = 0;
+  if (keys['ArrowLeft'] || keys['a']) dx = -gPlayer.speed;
+  if (keys['ArrowRight'] || keys['d']) dx = gPlayer.speed;
+  if (keys['ArrowUp'] || keys['w']) dy = -gPlayer.speed;
+  if (keys['ArrowDown'] || keys['s']) dy = gPlayer.speed;
+  
+  gPlayer.x += dx;
+  gPlayer.y += dy;
+  
+  // Player Movement (Mouse/Touch Drag)
+  if (isPointerDown && pointerX !== null && pointerY !== null) {
+    const lerpSpeed = 0.15;
+    gPlayer.x += (pointerX - gPlayer.x) * lerpSpeed;
+    gPlayer.y += (pointerY - gPlayer.y) * lerpSpeed;
+  }
+  
+  // Constraints
+  gPlayer.x = Math.max(gPlayer.size, Math.min(gW - gPlayer.size, gPlayer.x));
+  gPlayer.y = Math.max(gPlayer.size + 80, Math.min(gH - gPlayer.size, gPlayer.y));
+  
+  // Handle Firing
+  handlePlayerFiring();
+  
+  // Lasers Update
+  for (let i = gLasers.length - 1; i >= 0; i--) {
+    const l = gLasers[i];
+    l.x += l.vx;
+    l.y += l.vy;
+    if (l.y < 80 || l.x < 0 || l.x > gW) {
+      gLasers.splice(i, 1);
+    }
+  }
+  
+  for (let i = gEnemyLasers.length - 1; i >= 0; i--) {
+    const l = gEnemyLasers[i];
+    l.x += l.vx;
+    l.y += l.vy;
+    if (l.y > gH || l.x < 0 || l.x > gW) {
+      gEnemyLasers.splice(i, 1);
+    }
+  }
+  
+  // Hazard/Enemy Spawns
+  if (!bossSpawned) {
+    // Regular gameplay
+    if (gFrame % 80 === 0 && gEnemies.length < 8) {
+      const typeChance = Math.random();
+      let type = 'scout';
+      let size = 15;
+      let shield = 1;
+      let color = '#2ecc71';
+      let scoreVal = 50;
+      
+      if (typeChance > 0.85) {
+        type = 'destroyer';
+        size = 25;
+        shield = 4;
+        color = '#ff00ff';
+        scoreVal = 200;
+      } else if (typeChance > 0.55) {
+        type = 'fighter';
+        size = 18;
+        shield = 2;
+        color = '#e67e22';
+        scoreVal = 100;
+      }
+      
+      gEnemies.push({
+        x: Math.random() * (gW - 60) + 30,
+        y: -30,
+        type, size, shield, maxShield: shield,
+        vx: (Math.random() - 0.5) * 2,
+        vy: Math.random() * 1.5 + 1.5,
+        color, scoreVal,
+        shootTimer: Math.random() * 100 + 40
+      });
+    }
+    
+    // Spawn Asteroids
+    if (gFrame % 90 === 0 && gAsteroids.length < 5) {
+      const sizeVal = Math.random() * 30 + 15;
+      gAsteroids.push({
+        x: Math.random() * gW,
+        y: -40,
+        size: sizeVal,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: Math.random() * 2 + 1,
+        angle: Math.random() * Math.PI,
+        spin: (Math.random() - 0.5) * 0.04,
+        shield: Math.floor(sizeVal / 10)
+      });
+    }
+    
+    // Boss trigger at score 2500
+    if (gScore >= 2500) {
+      bossSpawned = true;
+      bossShip = {
+        x: gW / 2,
+        y: -100,
+        size: 70,
+        shield: 100,
+        maxShield: 100,
+        vx: 2,
+        vy: 1,
+        shootTimer: 0
+      };
+      // Clear out regular spawns with an explosion effect
+      gEnemies.forEach(e => {
+        createSpark(e.x, e.y, e.color, 12);
+        sfx.play('explosion');
+      });
+      gEnemies = [];
+      gAsteroids = [];
+      showPowerupBanner("⚠️ BOSS WARNING: MOTHERSHIP INCOMING!");
+    }
+  } else if (bossShip) {
+    // Boss update
+    if (bossShip.y < 160) {
+      bossShip.y += bossShip.vy;
+    } else {
+      bossShip.x += bossShip.vx;
+      if (bossShip.x - bossShip.size < 0 || bossShip.x + bossShip.size > gW) {
+        bossShip.vx *= -1;
+      }
+    }
+    
+    // Boss Shooting
+    bossShip.shootTimer++;
+    if (bossShip.shootTimer >= 45) {
+      bossShip.shootTimer = 0;
+      sfx.play('laser');
+      // Fire 3 laser spread
+      const laserSpeed = 8;
+      gEnemyLasers.push({ x: bossShip.x, y: bossShip.y + 40, vx: 0, vy: laserSpeed, color: '#e74c3c', size: 4 });
+      gEnemyLasers.push({ x: bossShip.x - 30, y: bossShip.y + 20, vx: -2, vy: laserSpeed - 0.5, color: '#e74c3c', size: 3 });
+      gEnemyLasers.push({ x: bossShip.x + 30, y: bossShip.y + 20, vx: 2, vy: laserSpeed - 0.5, color: '#e74c3c', size: 3 });
+    }
+  }
+  
+  // Update Enemies
+  for (let i = gEnemies.length - 1; i >= 0; i--) {
+    const e = gEnemies[i];
+    e.x += e.vx;
+    e.y += e.vy;
+    
+    // Bounds check
+    if (e.x - e.size < 0 || e.x + e.size > gW) e.vx *= -1;
+    if (e.y > gH + 50) {
+      gEnemies.splice(i, 1);
+      continue;
+    }
+    
+    // Enemy shooting
+    e.shootTimer--;
+    if (e.shootTimer <= 0) {
+      e.shootTimer = Math.random() * 150 + 80;
+      sfx.play('laser');
+      gEnemyLasers.push({
+        x: e.x,
+        y: e.y + e.size,
+        vx: 0,
+        vy: 6,
+        color: '#ff0055',
+        size: 3
+      });
+    }
+    
+    // Player collision with enemy
+    if (checkCircleCollision(gPlayer, e)) {
+      playerHit(25);
+      createSpark(e.x, e.y, e.color, 12);
+      gEnemies.splice(i, 1);
+      sfx.play('explosion');
+    }
+  }
+  
+  // Update Asteroids
+  for (let i = gAsteroids.length - 1; i >= 0; i--) {
+    const a = gAsteroids[i];
+    a.x += a.vx;
+    a.y += a.vy;
+    a.angle += a.spin;
+    
+    if (a.y > gH + 50) {
+      gAsteroids.splice(i, 1);
+      continue;
+    }
+    
+    // Player collision with Asteroid
+    if (checkCircleCollision(gPlayer, a)) {
+      playerHit(Math.floor(a.size));
+      createSpark(a.x, a.y, '#95a5a6', 15);
+      gAsteroids.splice(i, 1);
+      sfx.play('explosion');
+    }
+  }
+  
+  // Update Powerups
+  for (let i = gPowerups.length - 1; i >= 0; i--) {
+    const p = gPowerups[i];
+    p.y += 2.5;
+    
+    if (p.y > gH + 20) {
+      gPowerups.splice(i, 1);
+      continue;
+    }
+    
+    // Collide with player
+    if (checkCircleCollision(gPlayer, p)) {
+      sfx.play('shield');
+      if (p.type === 'vote') {
+        gVotesEarned += 5;
+        createFloater('galacticCanvas', "+5 Credits 🗳️", "#f1c40f");
+      } else if (p.type === 'shield') {
+        gPlayer.shield = Math.min(gPlayer.maxShield, gPlayer.shield + 40);
+        updateShieldHUD();
+        createFloater('galacticCanvas', "Shield Restored! 🛡️", "#2ecc71");
+      } else if (p.type === 'weapon') {
+        // Upgrade weapon temporarily (for this run only, up to level 4)
+        if (gPlayer.weaponLvl < 4) {
+          gPlayer.weaponLvl++;
+          createFloater('galacticCanvas', "Weapon Level UP! ⚡", "#00ffff");
+        } else {
+          gScore += 500;
+          createFloater('galacticCanvas', "+500 Pts!", "#00ffff");
+        }
+      } else if (p.type === 'bomb') {
+        // Explode all standard enemies on screen
+        gEnemies.forEach(e => {
+          createSpark(e.x, e.y, e.color, 12);
+          gScore += e.scoreVal;
+        });
+        gEnemies = [];
+        gAsteroids = [];
+        gScreenShake = 20;
+        sfx.play('explosion');
+        createFloater('galacticCanvas', "Smart Bomb! 💣", "#ff007f");
+      }
+      gPowerups.splice(i, 1);
+    }
+  }
+  
+  // Laser collisions with Enemies / Asteroids
+  for (let li = gLasers.length - 1; li >= 0; li--) {
+    const l = gLasers[li];
+    let laserHitObstacle = false;
+    
+    // Hit asteroids
+    for (let ai = gAsteroids.length - 1; ai >= 0; ai--) {
+      const a = gAsteroids[ai];
+      if (checkCircleCollision(l, a)) {
+        laserHitObstacle = true;
+        a.shield--;
+        createSpark(l.x, l.y, '#95a5a6', 4);
+        
+        if (a.shield <= 0) {
+          createSpark(a.x, a.y, '#7f8c8d', 10);
+          spawnPowerupChance(a.x, a.y);
+          gAsteroids.splice(ai, 1);
+          gScore += 20;
+          document.getElementById('galactic-score').textContent = gScore;
+          sfx.play('explosion');
+        }
+        break;
+      }
+    }
+    
+    if (laserHitObstacle) {
+      gLasers.splice(li, 1);
+      continue;
+    }
+    
+    // Hit enemies
+    for (let ei = gEnemies.length - 1; ei >= 0; ei--) {
+      const e = gEnemies[ei];
+      if (checkCircleCollision(l, e)) {
+        laserHitObstacle = true;
+        e.shield--;
+        createSpark(l.x, l.y, e.color, 4);
+        
+        if (e.shield <= 0) {
+          createSpark(e.x, e.y, e.color, 14);
+          spawnPowerupChance(e.x, e.y);
+          gEnemies.splice(ei, 1);
+          gScore += e.scoreVal;
+          document.getElementById('galactic-score').textContent = gScore;
+          sfx.play('explosion');
+        }
+        break;
+      }
+    }
+    
+    if (laserHitObstacle) {
+      gLasers.splice(li, 1);
+      continue;
+    }
+    
+    // Hit Boss
+    if (bossShip && checkCircleCollision(l, bossShip)) {
+      gLasers.splice(li, 1);
+      bossShip.shield -= l.size; // weapon level determines damage
+      createSpark(l.x, l.y, '#ff00ff', 6);
+      gScreenShake = 4;
+      
+      if (bossShip.shield <= 0) {
+        createSpark(bossShip.x, bossShip.y, '#ff0055', 40);
+        gScore += 5000;
+        document.getElementById('galactic-score').textContent = gScore;
+        bossShip = null;
+        sfx.play('explosion');
+        endGalacticGame(true);
+      }
+    }
+  }
+  
+  // Hit player with Enemy Lasers
+  for (let li = gEnemyLasers.length - 1; li >= 0; li--) {
+    const el = gEnemyLasers[li];
+    if (checkCircleCollision(el, gPlayer)) {
+      playerHit(15);
+      gEnemyLasers.splice(li, 1);
+    }
+  }
+  
+  // Particles Update
+  for (let i = gParticles.length - 1; i >= 0; i--) {
+    const p = gParticles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.alpha -= p.decay;
+    if (p.alpha <= 0) {
+      gParticles.splice(i, 1);
+    }
+  }
+}
+
+function drawGalactic() {
+  gCtx.fillStyle = '#050510';
+  gCtx.fillRect(0, 0, gW, gH);
+  
+  gCtx.save();
+  // Screen shake
+  if (gScreenShake > 0.5) {
+    const dx = (Math.random() - 0.5) * gScreenShake;
+    const dy = (Math.random() - 0.5) * gScreenShake;
+    gCtx.translate(dx, dy);
+  }
+  
+  // Stars
+  gCtx.fillStyle = '#ffffff';
+  gBackgroundStars.forEach(s => {
+    gCtx.globalAlpha = s.speed / 4; // parallax alpha
+    gCtx.fillRect(s.x, s.y, s.size, s.size);
+  });
+  gCtx.globalAlpha = 1.0;
+  
+  // Powerups
+  gPowerups.forEach(p => {
+    gCtx.save();
+    gCtx.shadowColor = p.color;
+    gCtx.shadowBlur = 10;
+    gCtx.fillStyle = p.color;
+    gCtx.beginPath();
+    gCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    gCtx.fill();
+    
+    // Label
+    gCtx.fillStyle = '#000';
+    gCtx.font = '10px Outfit,sans-serif';
+    gCtx.textAlign = 'center';
+    gCtx.textBaseline = 'middle';
+    gCtx.fillText(p.label === '🗳️' ? 'V' : p.label, p.x, p.y);
+    gCtx.restore();
+  });
+  
+  // Lasers
+  gLasers.forEach(l => {
+    gCtx.save();
+    gCtx.strokeStyle = l.color;
+    gCtx.lineWidth = l.size;
+    gCtx.lineCap = 'round';
+    gCtx.shadowColor = l.color;
+    gCtx.shadowBlur = 8;
+    gCtx.beginPath();
+    gCtx.moveTo(l.x, l.y);
+    gCtx.lineTo(l.x - l.vx * 0.4, l.y - l.vy * 0.4);
+    gCtx.stroke();
+    gCtx.restore();
+  });
+  
+  gEnemyLasers.forEach(l => {
+    gCtx.save();
+    gCtx.strokeStyle = l.color;
+    gCtx.lineWidth = l.size;
+    gCtx.lineCap = 'round';
+    gCtx.shadowColor = l.color;
+    gCtx.shadowBlur = 8;
+    gCtx.beginPath();
+    gCtx.moveTo(l.x, l.y);
+    gCtx.lineTo(l.x - l.vx * 0.4, l.y - l.vy * 0.4);
+    gCtx.stroke();
+    gCtx.restore();
+  });
+  
+  // Player Ship
+  if (gState === 'running') {
+    gCtx.save();
+    gCtx.shadowColor = '#00ffff';
+    gCtx.shadowBlur = 15;
+    gCtx.fillStyle = '#050510';
+    gCtx.strokeStyle = '#00ffff';
+    gCtx.lineWidth = 3;
+    
+    // Draw delta wing ship
+    gCtx.beginPath();
+    gCtx.moveTo(gPlayer.x, gPlayer.y - gPlayer.size);
+    gCtx.lineTo(gPlayer.x - gPlayer.size, gPlayer.y + gPlayer.size);
+    gCtx.lineTo(gPlayer.x, gPlayer.y + gPlayer.size * 0.4);
+    gCtx.lineTo(gPlayer.x + gPlayer.size, gPlayer.y + gPlayer.size);
+    gCtx.closePath();
+    gCtx.fill();
+    gCtx.stroke();
+    
+    // Neon Thruster flame
+    const flameH = Math.random() * 12 + 6;
+    gCtx.fillStyle = '#ff007f';
+    gCtx.beginPath();
+    gCtx.moveTo(gPlayer.x - 6, gPlayer.y + gPlayer.size * 0.5);
+    gCtx.lineTo(gPlayer.x, gPlayer.y + gPlayer.size * 0.5 + flameH);
+    gCtx.lineTo(gPlayer.x + 6, gPlayer.y + gPlayer.size * 0.5);
+    gCtx.closePath();
+    gCtx.fill();
+    gCtx.restore();
+  }
+  
+  // Enemies
+  gEnemies.forEach(e => {
+    gCtx.save();
+    gCtx.shadowColor = e.color;
+    gCtx.shadowBlur = 10;
+    gCtx.strokeStyle = e.color;
+    gCtx.lineWidth = 2.5;
+    gCtx.fillStyle = '#050510';
+    
+    if (e.type === 'scout') {
+      // Small triangle downward
+      gCtx.beginPath();
+      gCtx.moveTo(e.x, e.y + e.size);
+      gCtx.lineTo(e.x - e.size, e.y - e.size * 0.6);
+      gCtx.lineTo(e.x + e.size, e.y - e.size * 0.6);
+      gCtx.closePath();
+      gCtx.fill(); gCtx.stroke();
+    } else if (e.type === 'fighter') {
+      // Diamond
+      gCtx.beginPath();
+      gCtx.moveTo(e.x, e.y - e.size);
+      gCtx.lineTo(e.x + e.size * 0.8, e.y);
+      gCtx.lineTo(e.x, e.y + e.size);
+      gCtx.lineTo(e.x - e.size * 0.8, e.y);
+      gCtx.closePath();
+      gCtx.fill(); gCtx.stroke();
+    } else {
+      // Destroyer (chevron)
+      gCtx.beginPath();
+      gCtx.moveTo(e.x, e.y - e.size);
+      gCtx.lineTo(e.x + e.size, e.y - e.size * 0.5);
+      gCtx.lineTo(e.x + e.size * 0.5, e.y + e.size);
+      gCtx.lineTo(e.x, e.y + e.size * 0.3);
+      gCtx.lineTo(e.x - e.size * 0.5, e.y + e.size);
+      gCtx.lineTo(e.x - e.size, e.y - e.size * 0.5);
+      gCtx.closePath();
+      gCtx.fill(); gCtx.stroke();
+    }
+    
+    // Draw mini shield bar if hit
+    if (e.shield < e.maxShield) {
+      const barW = e.size * 1.5;
+      gCtx.fillStyle = 'rgba(255,255,255,0.1)';
+      gCtx.fillRect(e.x - barW / 2, e.y - e.size - 10, barW, 4);
+      gCtx.fillStyle = e.color;
+      gCtx.fillRect(e.x - barW / 2, e.y - e.size - 10, barW * (e.shield / e.maxShield), 4);
+    }
+    gCtx.restore();
+  });
+  
+  // Asteroids
+  gAsteroids.forEach(a => {
+    gCtx.save();
+    gCtx.translate(a.x, a.y);
+    gCtx.rotate(a.angle);
+    gCtx.strokeStyle = '#95a5a6';
+    gCtx.fillStyle = '#1e272c';
+    gCtx.lineWidth = 2;
+    
+    // Draw rough polygon
+    gCtx.beginPath();
+    const steps = 8;
+    for (let i = 0; i < steps; i++) {
+      const ang = (Math.PI * 2 / steps) * i;
+      // random radius factor for craggy look
+      const r = a.size * (0.8 + (Math.sin(i * 1.7) + 1) * 0.12);
+      const px = Math.cos(ang) * r;
+      const py = Math.sin(ang) * r;
+      if (i === 0) gCtx.moveTo(px, py);
+      else gCtx.lineTo(px, py);
+    }
+    gCtx.closePath();
+    gCtx.fill();
+    gCtx.stroke();
+    gCtx.restore();
+  });
+  
+  // Boss Ship
+  if (bossShip) {
+    gCtx.save();
+    gCtx.shadowColor = '#e74c3c';
+    gCtx.shadowBlur = 20;
+    gCtx.strokeStyle = '#e74c3c';
+    gCtx.fillStyle = '#0a0505';
+    gCtx.lineWidth = 4;
+    
+    // Draw massive Mothership
+    gCtx.beginPath();
+    gCtx.moveTo(bossShip.x, bossShip.y + bossShip.size * 0.6);
+    gCtx.lineTo(bossShip.x - bossShip.size, bossShip.y - bossShip.size * 0.3);
+    gCtx.lineTo(bossShip.x - bossShip.size * 0.5, bossShip.y - bossShip.size * 0.8);
+    gCtx.lineTo(bossShip.x + bossShip.size * 0.5, bossShip.y - bossShip.size * 0.8);
+    gCtx.lineTo(bossShip.x + bossShip.size, bossShip.y - bossShip.size * 0.3);
+    gCtx.closePath();
+    gCtx.fill();
+    gCtx.stroke();
+    
+    // Boss cores
+    gCtx.fillStyle = '#ff007f';
+    gCtx.beginPath();
+    gCtx.arc(bossShip.x - 30, bossShip.y - 10, 8, 0, Math.PI * 2);
+    gCtx.arc(bossShip.x + 30, bossShip.y - 10, 8, 0, Math.PI * 2);
+    gCtx.fill();
+    
+    // Boss main shield bar
+    const barW = bossShip.size * 2.2;
+    gCtx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    gCtx.fillRect(bossShip.x - barW / 2, bossShip.y - bossShip.size - 18, barW, 8);
+    gCtx.fillStyle = '#e74c3c';
+    gCtx.fillRect(bossShip.x - barW / 2, bossShip.y - bossShip.size - 18, barW * (bossShip.shield / bossShip.maxShield), 8);
+    
+    gCtx.restore();
+  }
+  
+  // Particles
+  gParticles.forEach(p => {
+    gCtx.save();
+    gCtx.globalAlpha = p.alpha;
+    gCtx.fillStyle = p.color;
+    gCtx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    gCtx.restore();
+  });
+  gCtx.globalAlpha = 1.0;
+  
+  gCtx.restore();
+}
+
+function galacticTick(timestamp) {
+  if (!galacticActive) return;
+  if (!galacticLastTime) galacticLastTime = timestamp;
+  let dt = (timestamp - galacticLastTime) / 1000;
+  galacticLastTime = timestamp;
+  
+  if (dt > 0.1) dt = 0.1;
+  
+  updateGalactic(dt);
+  drawGalactic();
+  
+  galacticAnimId = requestAnimationFrame(galacticTick);
 }
 
