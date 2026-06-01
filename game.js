@@ -3,14 +3,17 @@
 
 // ─── STARS ───────────────────────────────────────────────────────────────────
 (function createStars() {
-  const c = document.getElementById('stars');
-  for (let i = 0; i < 80; i++) {
-    const s = document.createElement('div');
-    s.className = 'star';
-    const sz = Math.random() * 2.5 + 0.5;
-    s.style.cssText = `width:${sz}px;height:${sz}px;top:${Math.random()*100}%;left:${Math.random()*100}%;--dur:${(Math.random()*3+2).toFixed(1)}s;--delay:-${(Math.random()*5).toFixed(1)}s`;
-    c.appendChild(s);
-  }
+  ['stars', 'hub-stars'].forEach(id => {
+    const c = document.getElementById(id);
+    if (!c) return;
+    for (let i = 0; i < 80; i++) {
+      const s = document.createElement('div');
+      s.className = 'star';
+      const sz = Math.random() * 2.5 + 0.5;
+      s.style.cssText = `width:${sz}px;height:${sz}px;top:${Math.random()*100}%;left:${Math.random()*100}%;--dur:${(Math.random()*3+2).toFixed(1)}s;--delay:-${(Math.random()*5).toFixed(1)}s`;
+      c.appendChild(s);
+    }
+  });
 })();
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -785,21 +788,24 @@ window.addEventListener('keydown', e => {
   }
 });
 
-// ─── TOUCH / SWIPE ────────────────────────────────────────────────────────────
-let touchStartX = 0, touchStartY = 0;
-window.addEventListener('touchstart', e => {
-  touchStartX = e.touches[0].clientX;
-  touchStartY = e.touches[0].clientY;
-}, { passive: true });
-window.addEventListener('touchend', e => {
+// ─── POINTER / TOUCH / SWIPE ──────────────────────────────────────────────────
+let pointerStartX = 0, pointerStartY = 0;
+window.addEventListener('pointerdown', e => {
+  pointerStartX = e.clientX;
+  pointerStartY = e.clientY;
+});
+window.addEventListener('pointerup', e => {
   if (gameState !== 'running') return;
-  const dx = e.changedTouches[0].clientX - touchStartX;
-  const dy = e.changedTouches[0].clientY - touchStartY;
+  // Ignore if clicking buttons, HUD elements, or inactive screens
+  if (e.target.closest('button') || e.target.closest('#hud') || e.target.closest('.screen:not(#game-screen)')) return;
+
+  const dx = e.clientX - pointerStartX;
+  const dy = e.clientY - pointerStartY;
   const adx = Math.abs(dx), ady = Math.abs(dy);
-  if (adx < 10 && ady < 10) { jump(); return; }
+  if (adx < 15 && ady < 15) { jump(); return; }
   if (ady > adx) { dy < 0 ? jump() : slide(); }
   else           { dx < 0 ? moveLeft() : moveRight(); }
-}, { passive: true });
+});
 
 // ─── LEADERBOARD UI ───────────────────────────────────────────────────────────
 function renderLeaderboard() {
