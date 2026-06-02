@@ -2,7 +2,7 @@
 'use strict';
 
 // Polyfill Canvas roundRect to be completely safe across all browsers
-if (typeof CanvasRenderingContext2D !== 'undefined') {
+if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
   CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
     if (typeof r === 'undefined') r = 0;
     if (typeof r === 'number') {
@@ -15,7 +15,6 @@ if (typeof CanvasRenderingContext2D !== 'undefined') {
     } else {
       r = Object.assign({ tl: 0, tr: 0, br: 0, bl: 0 }, r);
     }
-    this.beginPath();
     this.moveTo(x + r.tl, y);
     this.lineTo(x + w - r.tr, y);
     this.quadraticCurveTo(x + w, y, x + w, y + r.tr);
@@ -70,7 +69,14 @@ let lastTime = 0, animId;
 
 // ─── LEADERBOARD ─────────────────────────────────────────────────────────────
 function getLeaderboard() {
-  try { return JSON.parse(localStorage.getItem('vq_lb') || '[]'); } catch(e){ return []; }
+  try {
+    const raw = localStorage.getItem('vq_lb');
+    if (!raw) return [];
+    const lb = JSON.parse(raw);
+    return Array.isArray(lb) ? lb : [];
+  } catch(e){
+    return [];
+  }
 }
 function saveLeaderboard(lb) {
   try { localStorage.setItem('vq_lb', JSON.stringify(lb)); } catch(e){}
@@ -1663,6 +1669,7 @@ function loadFactoryGame() {
     const saved = localStorage.getItem('fb_save');
     if (!saved) return;
     const data = JSON.parse(saved);
+    if (!data || typeof data !== 'object') return;
     fCash = data.fCash ?? 0;
     fXp = data.fXp ?? 0;
     fLevel = data.fLevel ?? 1;
@@ -1959,6 +1966,7 @@ function loadGalacticGame() {
     const saved = localStorage.getItem('gc_save');
     if (!saved) return;
     const data = JSON.parse(saved);
+    if (!data || typeof data !== 'object') return;
     gcVotes = data.gcVotes ?? 0;
     gcHighscore = data.gcHighscore ?? 0;
     upgWeapon = data.upgWeapon ?? 1;
@@ -2877,8 +2885,16 @@ function createTarget(x, y, type = 'boss') {
 
 function loadSlingshotScores() {
   try {
-    const scores = JSON.parse(localStorage.getItem('vq_slingshot_scores') || '[0, 0, 0]');
-    return scores;
+    const raw = localStorage.getItem('vq_slingshot_scores');
+    if (!raw) return [0, 0, 0];
+    const scores = JSON.parse(raw);
+    if (Array.isArray(scores)) {
+      while (scores.length < 3) {
+        scores.push(0);
+      }
+      return scores;
+    }
+    return [0, 0, 0];
   } catch(e) {
     return [0, 0, 0];
   }
