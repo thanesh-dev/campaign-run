@@ -47,6 +47,14 @@
           <p class="hub-card-desc">Take the campaign to the stars! Pilot a starship, blast asteroid fields, collect cosmic vote credits, and defeat the alien mothership.</p>
           <button class="btn-hub" id="btn-goto-galactic">Play Now ▶</button>
         </div>
+
+        <!-- Slingshot Campaign Card -->
+        <div class="hub-card" id="card-slingshot">
+          <div class="hub-card-icon">🎯</div>
+          <h2 class="hub-card-title">Slingshot Campaign</h2>
+          <p class="hub-card-desc">Launch vote capsules with a physics slingshot! Smash down corrupt stacks, pop targets, and retrieve the stolen ballot boxes!</p>
+          <button class="btn-hub" id="btn-goto-slingshot">Play Now ▶</button>
+        </div>
       </div>
     </div>
   </div>
@@ -441,6 +449,73 @@
 
     <!-- Floating text container for floating cash/XP animations -->
     <div id="factory-floaters" class="floaters-container"></div>
+  </div>
+
+  <!-- SLINGSHOT CAMPAIGN SCREEN -->
+  <div id="slingshot-screen" class="screen">
+    <div class="screen-bg"></div>
+    <div class="parallax-stars" id="slingshot-stars"></div>
+    <canvas id="slingshotCanvas"></canvas>
+
+    <!-- Slingshot HUD -->
+    <div class="slingshot-hud">
+      <div class="s-hud-left">
+        <button class="btn-back-hub" id="btn-slingshot-back">🏠 Exit</button>
+        <div class="s-stats">
+          <span class="s-score-lbl">SCORE: <span id="slingshot-score">0</span></span>
+          <span class="s-shots-lbl">🗳️ SHOTS: <span id="slingshot-shots">3</span></span>
+        </div>
+      </div>
+      <div class="s-hud-center">
+        <div class="s-level-name" id="slingshot-level-name">LEVEL 1: SIMPLE STACK</div>
+      </div>
+      <div class="s-hud-right">
+        <div class="s-power-container">
+          <span class="s-power-lbl">PROJECTILE:</span>
+          <span class="s-power-val" id="slingshot-ammo-type">Standard</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Level Selection overlay -->
+    <div id="slingshot-level-select" class="slingshot-overlay">
+      <div class="overlay-card">
+        <h2>🎯 Slingshot Campaign</h2>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-top:-10px; text-align:center;">Select your mission and clear the stacks!</p>
+        <div class="s-level-grid" style="display:flex; flex-direction:column; gap:12px; width:100%;">
+          <button class="btn-overlay s-level-btn" data-level="0">Level 1: Simple Stack</button>
+          <button class="btn-overlay s-level-btn" data-level="1">Level 2: The Fort</button>
+          <button class="btn-overlay s-level-btn" data-level="2">Level 3: Double Trouble</button>
+        </div>
+        <button class="btn-overlay secondary" id="btn-slingshot-select-back" style="margin-top:10px;">🏠 Exit to Portal</button>
+      </div>
+    </div>
+
+    <!-- Game Over overlay for Slingshot -->
+    <div id="slingshot-gameover" class="slingshot-overlay hidden">
+      <div class="overlay-card">
+        <h2 style="color:var(--deep-red);">💥 Mission Failed!</h2>
+        <p>You ran out of shots before clearing the corrupt targets.</p>
+        <button class="btn-overlay" id="btn-slingshot-restart">🔄 Try Again</button>
+        <button class="btn-overlay secondary" id="btn-slingshot-gameover-menu">🏠 Exit to Portal</button>
+      </div>
+    </div>
+
+    <!-- Victory overlay for Slingshot -->
+    <div id="slingshot-victory" class="slingshot-overlay hidden">
+      <div class="overlay-card">
+        <h2 style="color:var(--gold);">🏆 Level Cleared!</h2>
+        <p>All corrupt targets successfully cleared!</p>
+        <div class="result-grid">
+          <div class="result-item" style="width:100%;">
+            <span class="result-label">LEVEL SCORE</span>
+            <span class="result-value" id="slingshot-victory-score">0</span>
+          </div>
+        </div>
+        <button class="btn-overlay" id="btn-slingshot-next">▶ Next Level</button>
+        <button class="btn-overlay secondary" id="btn-slingshot-victory-menu">🏠 Exit to Portal</button>
+      </div>
+    </div>
   </div>
 
   <script src="game.js"></script>

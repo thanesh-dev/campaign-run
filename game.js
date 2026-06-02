@@ -3,7 +3,7 @@
 
 // ─── STARS ───────────────────────────────────────────────────────────────────
 (function createStars() {
-  ['stars', 'hub-stars', 'galactic-stars'].forEach(id => {
+  ['stars', 'hub-stars', 'galactic-stars', 'slingshot-stars'].forEach(id => {
     const c = document.getElementById(id);
     if (!c) return;
     for (let i = 0; i < 80; i++) {
@@ -902,6 +902,55 @@ document.getElementById('btn-galactic-victory-ok').onclick = () => {
   showScreen('hub-screen');
 };
 
+// Slingshot Transitions
+document.getElementById('btn-goto-slingshot').onclick = () => {
+  sfx.play('click');
+  initSlingshot();
+  showScreen('slingshot-screen');
+};
+
+document.getElementById('btn-slingshot-back').onclick = () => {
+  sfx.play('click');
+  exitSlingshot();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-slingshot-select-back').onclick = () => {
+  sfx.play('click');
+  exitSlingshot();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-slingshot-restart').onclick = () => {
+  sfx.play('click');
+  document.getElementById('slingshot-gameover').classList.add('hidden');
+  startSlingshotLevel(currentLevelIdx);
+};
+
+document.getElementById('btn-slingshot-gameover-menu').onclick = () => {
+  sfx.play('click');
+  exitSlingshot();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-slingshot-next').onclick = () => {
+  sfx.play('click');
+  document.getElementById('slingshot-victory').classList.add('hidden');
+  if (currentLevelIdx < 2) {
+    currentLevelIdx++;
+    startSlingshotLevel(currentLevelIdx);
+  } else {
+    exitSlingshot();
+    showScreen('hub-screen');
+  }
+};
+
+document.getElementById('btn-slingshot-victory-menu').onclick = () => {
+  sfx.play('click');
+  exitSlingshot();
+  showScreen('hub-screen');
+};
+
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 initCanvas();
 showScreen('hub-screen');
@@ -1016,6 +1065,46 @@ const sfx = {
         osc.frequency.setValueAtTime(350, now);
         osc.frequency.exponentialRampToValueAtTime(950, now + 0.2);
         gain.gain.setValueAtTime(0.05, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
+      } else if (type === 'launch') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(600, now + 0.12);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.12);
+        osc.start(now); osc.stop(now + 0.12);
+      } else if (type === 'hit') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(100, now);
+        osc.frequency.linearRampToValueAtTime(40, now + 0.15);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.15);
+        osc.start(now); osc.stop(now + 0.15);
+      } else if (type === 'pop') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+      } else if (type === 'boost') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.2);
+        gain.gain.setValueAtTime(0.08, now);
         gain.gain.linearRampToValueAtTime(0, now + 0.2);
         osc.start(now); osc.stop(now + 0.2);
       }
@@ -2627,4 +2716,1018 @@ function galacticTick(timestamp) {
   
   galacticAnimId = requestAnimationFrame(galacticTick);
 }
+
+
+// ==============================================================================
+// ─── SLINGSHOT CAMPAIGN GAME MODULE ───────────────────────────────────────────
+// ==============================================================================
+let slingshotActive = false;
+let slingshotLastTime = 0;
+let slingshotAnimId = null;
+
+let sCanvas, sCtx, sW, sH;
+let sGameState = 'select'; // select | ready | dragging | flying | settled | win | fail
+
+let currentLevelIdx = 0;
+let shotsRemaining = 3;
+let sScore = 0;
+
+let sBlocks = [];
+let sTargets = [];
+let sProjectiles = []; // active flying ones
+let currentProjectile = null; // one loaded in the slingshot
+let sParticles = [];
+let sScreenShake = 0;
+
+const slingshotPos = { x: 180, y: 0 };
+const maxDragDist = 110;
+const launchForceMultiplier = 0.17;
+const gravity = 0.32;
+let groundY = 0;
+
+// Mouse/touch drag state
+let isDragging = false;
+let dragStart = { x: 0, y: 0 };
+let dragCurrent = { x: 0, y: 0 };
+
+const levelQueues = [
+  ['Standard', 'Triple', 'Megaphone'],
+  ['Heavy', 'Triple', 'Megaphone'],
+  ['Heavy', 'Standard', 'Triple', 'Heavy']
+];
+
+const levelNames = [
+  "LEVEL 1: SIMPLE STACK",
+  "LEVEL 2: THE FORT",
+  "LEVEL 3: DOUBLE TROUBLE"
+];
+
+function createBlock(x, y, w, h, type) {
+  let hp = 40;
+  let density = 1;
+  let color = '#8E5A36';
+  let border = '#6D3F21';
+  let scoreVal = 100;
+  
+  if (type === 'stone') {
+    hp = 100; density = 2.8; color = '#7F8C8D'; border = '#5F6C6D'; scoreVal = 250;
+  } else if (type === 'glass') {
+    hp = 15; density = 0.5; color = 'rgba(135, 206, 250, 0.7)'; border = '#87CEFA'; scoreVal = 50;
+  }
+  return { x, y, w, h, vx: 0, vy: 0, type, hp, maxHp: hp, density, color, border, scoreVal, isStatic: false };
+}
+
+function createTarget(x, y, type = 'boss') {
+  return {
+    x, y, r: 18,
+    vx: 0, vy: 0,
+    hp: 20, maxHp: 20,
+    color: '#FF6B00',
+    border: '#E74C3C',
+    type
+  };
+}
+
+function loadSlingshotScores() {
+  try {
+    const scores = JSON.parse(localStorage.getItem('vq_slingshot_scores') || '[0, 0, 0]');
+    return scores;
+  } catch(e) {
+    return [0, 0, 0];
+  }
+}
+
+function saveSlingshotScore(lvlIdx, score) {
+  try {
+    const scores = loadSlingshotScores();
+    if (score > scores[lvlIdx]) {
+      scores[lvlIdx] = score;
+      localStorage.setItem('vq_slingshot_scores', JSON.stringify(scores));
+    }
+  } catch(e) {}
+}
+
+function renderSlingshotLevels() {
+  const scores = loadSlingshotScores();
+  const btns = document.querySelectorAll('.s-level-btn');
+  btns.forEach((btn, idx) => {
+    btn.innerHTML = `${levelNames[idx]}<br><span style="font-size:0.75rem; color:var(--gold);">High Score: ${scores[idx] || 0}</span>`;
+  });
+}
+
+function initSlingshot() {
+  sCanvas = document.getElementById('slingshotCanvas');
+  sCtx = sCanvas.getContext('2d');
+  
+  resizeSlingshot();
+  window.addEventListener('resize', resizeSlingshot);
+  
+  // Wire level selector click events
+  document.querySelectorAll('.s-level-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      sfx.play('click');
+      const lvl = parseInt(btn.dataset.level);
+      startSlingshotLevel(lvl);
+    };
+  });
+  
+  // Drag and active click events
+  sCanvas.onpointerdown = handlePointerDown;
+  sCanvas.onpointermove = handlePointerMove;
+  sCanvas.onpointerup = handlePointerUp;
+  
+  renderSlingshotLevels();
+  document.getElementById('slingshot-level-select').classList.remove('hidden');
+  
+  slingshotActive = true;
+  slingshotLastTime = 0;
+  slingshotAnimId = requestAnimationFrame(slingshotTick);
+}
+
+function handlePointerDown(e) {
+  e.preventDefault();
+  sfx.init();
+  const rect = sCanvas.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+  
+  if (sGameState === 'ready' && currentProjectile) {
+    const dx = px - slingshotPos.x;
+    const dy = py - slingshotPos.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 60) { // Clicked near slingshot base
+      isDragging = true;
+      dragStart.x = slingshotPos.x;
+      dragStart.y = slingshotPos.y;
+      dragCurrent.x = px;
+      dragCurrent.y = py;
+      sGameState = 'dragging';
+    }
+  } else if (sGameState === 'flying') {
+    // Check if player clicked during flight to trigger mid-air ability!
+    triggerSpecialAbility();
+  }
+}
+
+function triggerSpecialAbility() {
+  sProjectiles.forEach(p => {
+    if (p.state === 'flying' && !p.abilityUsed) {
+      if (p.type === 'Megaphone') {
+        p.abilityUsed = true;
+        let speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+        if (speed > 0.5) {
+          p.vx = (p.vx / speed) * (speed * 1.8);
+          p.vy = (p.vy / speed) * (speed * 1.8);
+        }
+        sfx.play('boost');
+        sScreenShake = 8;
+        // Spawn trail sparks
+        for (let i = 0; i < 20; i++) {
+          sParticles.push({
+            x: p.x, y: p.y,
+            vx: (Math.random() - 0.5) * 6 - p.vx * 0.3,
+            vy: (Math.random() - 0.5) * 6 - p.vy * 0.3,
+            size: Math.random() * 4 + 2,
+            color: '#3498db',
+            alpha: 1,
+            decay: Math.random() * 0.05 + 0.02
+          });
+        }
+      } else if (p.type === 'Triple') {
+        p.abilityUsed = true;
+        sfx.play('boost');
+        
+        // Spawn 2 clone balls at slightly offset launch vectors
+        const vx1 = p.vx * 0.96 - p.vy * 0.08;
+        const vy1 = p.vy * 0.96 + p.vx * 0.08;
+        
+        const vx2 = p.vx * 0.96 + p.vy * 0.08;
+        const vy2 = p.vy * 0.96 - p.vx * 0.08;
+        
+        const clone1 = { ...p, vx: vx1, vy: vy1, abilityUsed: true };
+        const clone2 = { ...p, vx: vx2, vy: vy2, abilityUsed: true };
+        
+        sProjectiles.push(clone1, clone2);
+        
+        // Trailing particles
+        spawnSlingshotParticles(p.x, p.y, '#9b59b6', 15);
+      }
+    }
+  });
+}
+
+function handlePointerMove(e) {
+  if (!isDragging) return;
+  e.preventDefault();
+  const rect = sCanvas.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+  
+  const dx = px - slingshotPos.x;
+  const dy = py - slingshotPos.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  
+  if (dist > maxDragDist) {
+    dragCurrent.x = slingshotPos.x + (dx / dist) * maxDragDist;
+    dragCurrent.y = slingshotPos.y + (dy / dist) * maxDragDist;
+  } else {
+    dragCurrent.x = px;
+    dragCurrent.y = py;
+  }
+}
+
+function handlePointerUp(e) {
+  if (!isDragging) return;
+  e.preventDefault();
+  isDragging = false;
+  
+  const dx = slingshotPos.x - dragCurrent.x;
+  const dy = slingshotPos.y - dragCurrent.y;
+  
+  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+    // Launch!
+    sfx.play('launch');
+    
+    currentProjectile.vx = dx * launchForceMultiplier;
+    currentProjectile.vy = dy * launchForceMultiplier;
+    currentProjectile.state = 'flying';
+    
+    sProjectiles = [currentProjectile];
+    currentProjectile = null;
+    sGameState = 'flying';
+    shotsRemaining--;
+    
+    document.getElementById('slingshot-shots').textContent = shotsRemaining;
+  } else {
+    // Cancel drag
+    sGameState = 'ready';
+  }
+}
+
+function buildLevel(idx) {
+  sBlocks = [];
+  sTargets = [];
+  sParticles = [];
+  
+  const floorY = groundY;
+  const bx = Math.max(300, sW - 340); // responsive structures starting base
+  
+  if (idx === 0) {
+    // Level 1: Simple Stack
+    sBlocks.push(createBlock(bx, floorY - 80, 20, 80, 'wood'));
+    sBlocks.push(createBlock(bx + 100, floorY - 80, 20, 80, 'wood'));
+    sBlocks.push(createBlock(bx - 20, floorY - 100, 140, 20, 'wood'));
+    sTargets.push(createTarget(bx + 50, floorY - 120));
+  } 
+  else if (idx === 1) {
+    // Level 2: The Fort
+    sBlocks.push(createBlock(bx, floorY - 80, 25, 80, 'stone'));
+    sBlocks.push(createBlock(bx + 100, floorY - 80, 25, 80, 'stone'));
+    sBlocks.push(createBlock(bx + 200, floorY - 80, 25, 80, 'stone'));
+    sBlocks.push(createBlock(bx - 20, floorY - 100, 260, 20, 'wood'));
+    
+    sTargets.push(createTarget(bx + 50, floorY - 120));
+    sTargets.push(createTarget(bx + 150, floorY - 120));
+    
+    sBlocks.push(createBlock(bx + 50, floorY - 180, 20, 80, 'wood'));
+    sBlocks.push(createBlock(bx + 130, floorY - 180, 20, 80, 'wood'));
+    sBlocks.push(createBlock(bx + 40, floorY - 200, 120, 20, 'glass'));
+    
+    sTargets.push(createTarget(bx + 100, floorY - 220));
+  } 
+  else if (idx === 2) {
+    // Level 3: Double Trouble
+    // Structure 1: Glass tower (Fragile) on the left
+    sBlocks.push(createBlock(bx, floorY - 60, 15, 60, 'glass'));
+    sBlocks.push(createBlock(bx + 70, floorY - 60, 15, 60, 'glass'));
+    sBlocks.push(createBlock(bx - 10, floorY - 80, 105, 20, 'glass'));
+    sTargets.push(createTarget(bx + 42, floorY - 100));
+    
+    sBlocks.push(createBlock(bx + 10, floorY - 140, 15, 60, 'glass'));
+    sBlocks.push(createBlock(bx + 60, floorY - 140, 15, 60, 'glass'));
+    sBlocks.push(createBlock(bx, floorY - 160, 90, 20, 'glass'));
+    sTargets.push(createTarget(bx + 45, floorY - 180));
+    
+    // Structure 2: Heavy stone fortress on the right
+    sBlocks.push(createBlock(bx + 150, floorY - 80, 30, 80, 'stone'));
+    sBlocks.push(createBlock(bx + 240, floorY - 80, 30, 80, 'stone'));
+    sBlocks.push(createBlock(bx + 130, floorY - 100, 160, 20, 'stone'));
+    
+    // Wood column on top of stone
+    sBlocks.push(createBlock(bx + 200, floorY - 180, 20, 80, 'wood'));
+    sTargets.push(createTarget(bx + 210, floorY - 200));
+  }
+}
+
+function prepareNextProjectile() {
+  const queue = levelQueues[currentLevelIdx];
+  const firedCount = queue.length - shotsRemaining;
+  
+  if (firedCount >= 0 && firedCount < queue.length) {
+    ammoType = queue[firedCount];
+    
+    let radius = 15;
+    let mass = 1;
+    let color = '#F5C518';
+    
+    if (ammoType === 'Megaphone') {
+      radius = 13; mass = 0.85; color = '#3498db';
+    } else if (ammoType === 'Triple') {
+      radius = 12; mass = 0.95; color = '#9b59b6';
+    } else if (ammoType === 'Heavy') {
+      radius = 22; mass = 3.6; color = '#7f8c8d';
+    }
+    
+    currentProjectile = {
+      x: slingshotPos.x,
+      y: slingshotPos.y,
+      vx: 0,
+      vy: 0,
+      r: radius,
+      mass: mass,
+      color: color,
+      type: ammoType,
+      state: 'idle',
+      abilityUsed: false
+    };
+    
+    sProjectiles = [currentProjectile];
+    sGameState = 'ready';
+    
+    // Update ammo label on HUD
+    document.getElementById('slingshot-ammo-type').textContent = getAmmoDisplayName(ammoType);
+    document.getElementById('slingshot-ammo-type').style.color = color;
+    document.getElementById('slingshot-ammo-type').style.borderColor = color + '40';
+    document.getElementById('slingshot-ammo-type').style.background = color + '15';
+  } else {
+    currentProjectile = null;
+    sProjectiles = [];
+  }
+}
+
+function getAmmoDisplayName(type) {
+  if (type === 'Standard') return 'Standard Ballot';
+  if (type === 'Megaphone') return 'Sonic Megaphone';
+  if (type === 'Triple') return 'Triple Vote';
+  if (type === 'Heavy') return 'Heavy Ballot Box';
+  return type;
+}
+
+function spawnSlingshotParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 5 + 1.5;
+    sParticles.push({
+      x: x,
+      y: y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: Math.random() * 4 + 1.5,
+      color: color,
+      alpha: 1.0,
+      decay: Math.random() * 0.04 + 0.02
+    });
+  }
+}
+
+function updateSlingshot(dt) {
+  // 1. Gravity and position updates
+  sBlocks.forEach(b => {
+    b.vy += gravity;
+    b.x += b.vx;
+    b.y += b.vy;
+    
+    // Friction
+    b.vx *= 0.985;
+    b.vy *= 0.985;
+    
+    // Ground collision
+    if (b.y + b.h > groundY) {
+      b.y = groundY - b.h;
+      b.vy = -b.vy * 0.15; // light elastic bounce
+      b.vx *= 0.65; // ground friction
+      if (Math.abs(b.vy) < 0.15) b.vy = 0;
+      if (Math.abs(b.vx) < 0.15) b.vx = 0;
+    }
+  });
+  
+  sTargets.forEach(t => {
+    if (t.hp <= 0) return;
+    t.vy += gravity;
+    t.x += t.vx;
+    t.y += t.vy;
+    
+    // Friction
+    t.vx *= 0.985;
+    t.vy *= 0.985;
+    
+    // Ground collision
+    if (t.y + t.r > groundY) {
+      t.y = groundY - t.r;
+      t.vy = -t.vy * 0.2;
+      t.vx *= 0.7;
+      
+      // Damage target if hitting hard
+      if (Math.abs(t.vy) > 2.0) {
+        t.hp -= Math.abs(t.vy) * 3;
+        sfx.play('hit');
+      }
+    }
+  });
+  
+  sProjectiles.forEach(p => {
+    if (p.state !== 'flying') return;
+    p.vy += gravity;
+    p.x += p.vx;
+    p.y += p.vy;
+    
+    // Air friction
+    p.vx *= 0.995;
+    p.vy *= 0.995;
+    
+    // Ground collision
+    if (p.y + p.r > groundY) {
+      p.y = groundY - p.r;
+      p.vy = -p.vy * 0.35; // bounce
+      p.vx *= 0.8;
+      if (Math.abs(p.vx) < 0.2 && Math.abs(p.vy) < 0.2) {
+        p.state = 'settled';
+      }
+    }
+    
+    // Offscreen checks
+    if (p.x < -100 || p.x > sW + 100 || p.y > sH + 100) {
+      p.state = 'settled';
+    }
+  });
+  
+  // 2. Physics collisions resolution (relaxation loop for stack stability)
+  for (let iter = 0; iter < 4; iter++) {
+    // Block vs Block
+    for (let i = 0; i < sBlocks.length; i++) {
+      for (let j = i + 1; j < sBlocks.length; j++) {
+        let a = sBlocks[i];
+        let b = sBlocks[j];
+        if (checkAABBOverlap(a, b)) {
+          let overlapX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+          let overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+          if (overlapX < overlapY) {
+            let sign = (a.x + a.w/2 < b.x + b.w/2) ? -1 : 1;
+            let totalD = a.density + b.density;
+            let ratioA = b.density / totalD;
+            let ratioB = a.density / totalD;
+            a.x += sign * overlapX * ratioA;
+            b.x -= sign * overlapX * ratioB;
+            // Momentum transfer
+            let avg = (a.vx + b.vx) / 2;
+            a.vx = avg * 0.7;
+            b.vx = avg * 0.7;
+          } else {
+            let sign = (a.y + a.h/2 < b.y + b.h/2) ? -1 : 1;
+            let totalD = a.density + b.density;
+            let ratioA = b.density / totalD;
+            let ratioB = a.density / totalD;
+            a.y += sign * overlapY * ratioA;
+            b.y -= sign * overlapY * ratioB;
+            // Bounce/rest
+            let temp = a.vy;
+            a.vy = b.vy * 0.2;
+            b.vy = temp * 0.2;
+          }
+        }
+      }
+    }
+    
+    // Projectile vs Block
+    sProjectiles.forEach(p => {
+      if (p.state !== 'flying') return;
+      sBlocks.forEach(b => {
+        let closestX = Math.max(b.x, Math.min(p.x, b.x + b.w));
+        let closestY = Math.max(b.y, Math.min(p.y, b.y + b.h));
+        let dx = p.x - closestX;
+        let dy = p.y - closestY;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < p.r) {
+          let overlap = p.r - dist;
+          let nx = dx / (dist || 1);
+          let ny = dy / (dist || 1);
+          if (dist === 0) { nx = 0; ny = -1; overlap = p.r; }
+          
+          p.x += nx * overlap;
+          p.y += ny * overlap;
+          
+          let speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+          let impactForce = speed * p.mass;
+          
+          b.hp -= impactForce * 4.5 + 4;
+          
+          b.vx += nx * speed * 0.5 * (p.mass / b.density);
+          b.vy += ny * speed * 0.5 * (p.mass / b.density);
+          
+          let dot = p.vx * nx + p.vy * ny;
+          p.vx = (p.vx - 2 * dot * nx) * 0.35;
+          p.vy = (p.vy - 2 * dot * ny) * 0.35;
+          
+          sScreenShake = Math.max(sScreenShake, impactForce * 1.5);
+          spawnSlingshotParticles(closestX, closestY, b.color, 8);
+          sfx.play('hit');
+        }
+      });
+    });
+    
+    // Target vs Block
+    sTargets.forEach(t => {
+      if (t.hp <= 0) return;
+      sBlocks.forEach(b => {
+        let closestX = Math.max(b.x, Math.min(t.x, b.x + b.w));
+        let closestY = Math.max(b.y, Math.min(t.y, b.y + b.h));
+        let dx = t.x - closestX;
+        let dy = t.y - closestY;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < t.r) {
+          let overlap = t.r - dist;
+          let nx = dx / (dist || 1);
+          let ny = dy / (dist || 1);
+          if (dist === 0) { nx = 0; ny = -1; overlap = t.r; }
+          
+          t.x += nx * overlap;
+          t.y += ny * overlap;
+          
+          let relVX = t.vx - b.vx;
+          let relVY = t.vy - b.vy;
+          let speed = Math.sqrt(relVX*relVX + relVY*relVY);
+          if (speed > 1.2) {
+            t.hp -= speed * 4.0;
+            sfx.play('hit');
+            spawnSlingshotParticles(t.x, t.y, '#e74c3c', 8);
+          }
+          
+          let dot = t.vx * nx + t.vy * ny;
+          t.vx = (t.vx - 2 * dot * nx) * 0.2;
+          t.vy = (t.vy - 2 * dot * ny) * 0.2;
+        }
+      });
+    });
+    
+    // Target vs Target
+    for (let i = 0; i < sTargets.length; i++) {
+      for (let j = i + 1; j < sTargets.length; j++) {
+        let a = sTargets[i];
+        let b = sTargets[j];
+        if (a.hp <= 0 || b.hp <= 0) return;
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        let sumR = a.r + b.r;
+        if (dist < sumR) {
+          let overlap = sumR - dist;
+          let nx = dx / (dist || 1);
+          let ny = dy / (dist || 1);
+          
+          a.x -= nx * overlap * 0.5;
+          b.x += nx * overlap * 0.5;
+          a.y -= ny * overlap * 0.5;
+          b.y += ny * overlap * 0.5;
+          
+          let tempX = a.vx; let tempY = a.vy;
+          a.vx = b.vx * 0.4; a.vy = b.vy * 0.4;
+          b.vx = tempX * 0.4; b.vy = tempY * 0.4;
+        }
+      }
+    }
+    
+    // Projectile vs Target
+    sProjectiles.forEach(p => {
+      if (p.state !== 'flying') return;
+      sTargets.forEach(t => {
+        if (t.hp <= 0) return;
+        let dx = t.x - p.x;
+        let dy = t.y - p.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        let sumR = p.r + t.r;
+        if (dist < sumR) {
+          let overlap = sumR - dist;
+          let nx = dx / (dist || 1);
+          let ny = dy / (dist || 1);
+          
+          p.x -= nx * overlap * 0.5;
+          t.x += nx * overlap * 0.5;
+          p.y -= ny * overlap * 0.5;
+          t.y += ny * overlap * 0.5;
+          
+          let speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+          t.hp -= speed * p.mass * 5 + 6;
+          sScreenShake = Math.max(sScreenShake, speed * 2);
+          
+          let dot = p.vx * nx + p.vy * ny;
+          p.vx = (p.vx - 2 * dot * nx) * 0.4;
+          p.vy = (p.vy - 2 * dot * ny) * 0.4;
+          
+          spawnSlingshotParticles(t.x, t.y, '#e74c3c', 10);
+          sfx.play('hit');
+        }
+      });
+    });
+  }
+  
+  // 3. Remove dead blocks and targets, award scores & particles
+  for (let i = sBlocks.length - 1; i >= 0; i--) {
+    if (sBlocks[i].hp <= 0) {
+      const b = sBlocks[i];
+      spawnSlingshotParticles(b.x + b.w/2, b.y + b.h/2, b.color, 14);
+      sScore += b.scoreVal;
+      sBlocks.splice(i, 1);
+      sfx.play('explosion');
+      sScreenShake = Math.max(sScreenShake, 6);
+    }
+  }
+  
+  for (let i = sTargets.length - 1; i >= 0; i--) {
+    if (sTargets[i].hp <= 0) {
+      const t = sTargets[i];
+      spawnSlingshotParticles(t.x, t.y, '#FF6B00', 25);
+      spawnSlingshotParticles(t.x, t.y, '#FFD700', 10);
+      sScore += 1000;
+      sTargets.splice(i, 1);
+      sfx.play('pop');
+      sScreenShake = 12;
+    }
+  }
+  
+  document.getElementById('slingshot-score').textContent = sScore;
+  
+  // 4. Update particles
+  sParticles.forEach((p, idx) => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.alpha -= p.decay;
+    if (p.alpha <= 0) {
+      sParticles.splice(idx, 1);
+    }
+  });
+  
+  // 5. State transitions (Win / Loss checking)
+  if (sTargets.length === 0 && sGameState !== 'win') {
+    sGameState = 'win';
+    saveSlingshotScore(currentLevelIdx, sScore);
+    setTimeout(() => {
+      document.getElementById('slingshot-victory-score').textContent = sScore;
+      document.getElementById('slingshot-victory').classList.remove('hidden');
+      renderSlingshotLevels();
+    }, 1200);
+    return;
+  }
+  
+  if (sGameState === 'flying') {
+    let allSettled = sProjectiles.every(p => p.state === 'settled');
+    if (allSettled) {
+      if (shotsRemaining > 0) {
+        sGameState = 'ready';
+        prepareNextProjectile();
+      } else {
+        sGameState = 'settling_down';
+        setTimeout(() => {
+          if (sTargets.length > 0 && sGameState === 'settling_down') {
+            sGameState = 'fail';
+            document.getElementById('slingshot-gameover').classList.remove('hidden');
+          }
+        }, 1500);
+      }
+    }
+  }
+}
+
+function drawSlingshot() {
+  sCtx.clearRect(0, 0, sW, sH);
+  
+  sCtx.save();
+  
+  // Camera shake
+  if (sScreenShake > 0.1) {
+    const dx = (Math.random() - 0.5) * sScreenShake;
+    const dy = (Math.random() - 0.5) * sScreenShake;
+    sCtx.translate(dx, dy);
+    sScreenShake *= 0.9;
+  }
+  
+  // 1. Draw slingshot fork structure (underneath projectile)
+  sCtx.strokeStyle = '#5e3e24';
+  sCtx.lineWidth = 8;
+  sCtx.lineCap = 'round';
+  
+  sCtx.beginPath();
+  sCtx.moveTo(slingshotPos.x, slingshotPos.y + 70);
+  sCtx.lineTo(slingshotPos.x, slingshotPos.y);
+  sCtx.stroke();
+  
+  sCtx.beginPath();
+  sCtx.moveTo(slingshotPos.x, slingshotPos.y);
+  sCtx.quadraticCurveTo(slingshotPos.x - 20, slingshotPos.y - 20, slingshotPos.x - 25, slingshotPos.y - 45);
+  sCtx.stroke();
+  
+  sCtx.beginPath();
+  sCtx.moveTo(slingshotPos.x, slingshotPos.y);
+  sCtx.quadraticCurveTo(slingshotPos.x + 20, slingshotPos.y - 20, slingshotPos.x + 25, slingshotPos.y - 45);
+  sCtx.stroke();
+  
+  // 2. Draw ground
+  const grad = sCtx.createLinearGradient(0, groundY, 0, sH);
+  grad.addColorStop(0, '#1E272C');
+  grad.addColorStop(1, '#0C0F12');
+  sCtx.fillStyle = grad;
+  sCtx.fillRect(0, groundY, sW, sH - groundY);
+  
+  sCtx.strokeStyle = '#2A363D';
+  sCtx.lineWidth = 3;
+  sCtx.beginPath();
+  sCtx.moveTo(0, groundY);
+  sCtx.lineTo(sW, groundY);
+  sCtx.stroke();
+  
+  sCtx.fillStyle = '#2ecc71';
+  sCtx.globalAlpha = 0.45;
+  for (let i = 0; i < sW; i += 20) {
+    sCtx.beginPath();
+    sCtx.moveTo(i, groundY);
+    sCtx.lineTo(i + 5, groundY - 8);
+    sCtx.lineTo(i + 10, groundY);
+    sCtx.fill();
+  }
+  sCtx.globalAlpha = 1.0;
+  
+  // 3. Draw slingshot rubber bands (back band)
+  if (sGameState === 'dragging' && isDragging) {
+    sCtx.strokeStyle = '#ff7675';
+    sCtx.lineWidth = 4;
+    sCtx.beginPath();
+    sCtx.moveTo(slingshotPos.x - 25, slingshotPos.y - 40);
+    sCtx.lineTo(dragCurrent.x, dragCurrent.y);
+    sCtx.stroke();
+  }
+  
+  // 4. Draw blocks
+  sBlocks.forEach(b => {
+    sCtx.save();
+    
+    sCtx.fillStyle = b.color;
+    sCtx.strokeStyle = b.border;
+    sCtx.lineWidth = 2.5;
+    
+    sCtx.beginPath();
+    sCtx.roundRect(b.x, b.y, b.w, b.h, 4);
+    sCtx.fill();
+    sCtx.stroke();
+    
+    if (b.type === 'wood') {
+      sCtx.strokeStyle = 'rgba(0,0,0,0.12)';
+      sCtx.lineWidth = 2;
+      sCtx.beginPath();
+      sCtx.moveTo(b.x + 4, b.y + b.h * 0.35);
+      sCtx.lineTo(b.x + b.w - 4, b.y + b.h * 0.35);
+      sCtx.moveTo(b.x + 4, b.y + b.h * 0.7);
+      sCtx.lineTo(b.x + b.w - 4, b.y + b.h * 0.7);
+      sCtx.stroke();
+    } else if (b.type === 'glass') {
+      sCtx.strokeStyle = 'rgba(255,255,255,0.4)';
+      sCtx.lineWidth = 1.5;
+      sCtx.beginPath();
+      sCtx.moveTo(b.x + 3, b.y + 3);
+      sCtx.lineTo(b.x + b.w - 3, b.y + b.h - 3);
+      sCtx.stroke();
+    } else if (b.type === 'stone') {
+      sCtx.strokeStyle = 'rgba(0,0,0,0.2)';
+      sCtx.lineWidth = 2;
+      sCtx.beginPath();
+      sCtx.moveTo(b.x + b.w/2, b.y);
+      sCtx.lineTo(b.x + b.w/3, b.y + b.h/2);
+      sCtx.lineTo(b.x + b.w * 0.7, b.y + b.h);
+      sCtx.stroke();
+    }
+    
+    if (b.hp < b.maxHp) {
+      let pct = b.hp / b.maxHp;
+      sCtx.fillStyle = 'rgba(0,0,0,0.4)';
+      sCtx.fillRect(b.x + 2, b.y + 2, b.w - 4, 3);
+      sCtx.fillStyle = pct > 0.5 ? '#2ecc71' : pct > 0.25 ? '#f39c12' : '#e74c3c';
+      sCtx.fillRect(b.x + 2, b.y + 2, (b.w - 4) * pct, 3);
+    }
+    
+    sCtx.restore();
+  });
+  
+  // 5. Draw targets (grumpy corrupt politician faces!)
+  sTargets.forEach(t => {
+    sCtx.save();
+    
+    sCtx.fillStyle = t.color;
+    sCtx.strokeStyle = t.border;
+    sCtx.lineWidth = 3;
+    
+    sCtx.beginPath();
+    sCtx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+    sCtx.fill();
+    sCtx.stroke();
+    
+    sCtx.strokeStyle = '#000';
+    sCtx.lineWidth = 2;
+    sCtx.lineCap = 'round';
+    sCtx.beginPath();
+    sCtx.arc(t.x, t.y + 7, 5, Math.PI + 0.3, Math.PI*2 - 0.3);
+    sCtx.stroke();
+    
+    sCtx.strokeStyle = '#fff';
+    sCtx.lineWidth = 4;
+    sCtx.beginPath();
+    sCtx.moveTo(t.x - t.r * 0.7, t.y + t.r * 0.2);
+    sCtx.lineTo(t.x + t.r * 0.7, t.y - t.r * 0.4);
+    sCtx.stroke();
+    
+    sCtx.fillStyle = '#111';
+    sCtx.beginPath();
+    sCtx.roundRect(t.x - 12, t.y - 7, 10, 6, 1.5);
+    sCtx.roundRect(t.x + 2, t.y - 7, 10, 6, 1.5);
+    sCtx.fill();
+    
+    sCtx.beginPath();
+    sCtx.moveTo(t.x - 2, t.y - 4);
+    sCtx.lineTo(t.x + 2, t.y - 4);
+    sCtx.stroke();
+    
+    sCtx.fillStyle = 'rgba(255, 215, 0, 0.9)';
+    sCtx.font = 'bold 8px Outfit';
+    sCtx.textAlign = 'center';
+    sCtx.fillText('$', t.x, t.y - 1);
+    
+    sCtx.restore();
+  });
+  
+  // 6. Draw active projectiles
+  sProjectiles.forEach(p => {
+    sCtx.save();
+    
+    sCtx.shadowBlur = 10;
+    sCtx.shadowColor = p.color;
+    
+    sCtx.fillStyle = p.color;
+    sCtx.strokeStyle = 'rgba(255,255,255,0.4)';
+    sCtx.lineWidth = 2;
+    
+    sCtx.beginPath();
+    sCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    sCtx.fill();
+    sCtx.stroke();
+    
+    sCtx.fillStyle = '#000';
+    sCtx.font = `bold ${Math.floor(p.r * 0.9)}px Outfit`;
+    sCtx.textAlign = 'center';
+    sCtx.textBaseline = 'middle';
+    
+    let label = '🗳️';
+    if (p.type === 'Megaphone') label = '📣';
+    else if (p.type === 'Triple') label = '🗳️';
+    else if (p.type === 'Heavy') label = '📦';
+    
+    sCtx.fillText(label, p.x, p.y);
+    
+    sCtx.restore();
+  });
+  
+  // 7. Draw projectile currently loaded in slingshot (ready/dragging)
+  if (sGameState === 'ready' && currentProjectile) {
+    sCtx.save();
+    sCtx.fillStyle = currentProjectile.color;
+    sCtx.beginPath();
+    sCtx.arc(slingshotPos.x, slingshotPos.y - 5, currentProjectile.r, 0, Math.PI * 2);
+    sCtx.fill();
+    sCtx.restore();
+  } 
+  else if (sGameState === 'dragging' && isDragging && currentProjectile) {
+    sCtx.save();
+    sCtx.fillStyle = currentProjectile.color;
+    sCtx.beginPath();
+    sCtx.arc(dragCurrent.x, dragCurrent.y, currentProjectile.r, 0, Math.PI * 2);
+    sCtx.fill();
+    sCtx.restore();
+  }
+  
+  // 8. Draw front rubber band (in front of projectile)
+  if (sGameState === 'dragging' && isDragging) {
+    sCtx.strokeStyle = '#ff7675';
+    sCtx.lineWidth = 4;
+    sCtx.beginPath();
+    sCtx.moveTo(slingshotPos.x + 25, slingshotPos.y - 40);
+    sCtx.lineTo(dragCurrent.x, dragCurrent.y);
+    sCtx.stroke();
+  }
+  
+  // 9. Draw trajectory path dots (if dragging)
+  if (sGameState === 'dragging' && isDragging && currentProjectile) {
+    sCtx.save();
+    sCtx.fillStyle = 'rgba(255, 215, 0, 0.45)';
+    
+    const dx = slingshotPos.x - dragCurrent.x;
+    const dy = slingshotPos.y - dragCurrent.y;
+    let px = dragCurrent.x;
+    let py = dragCurrent.y;
+    let vx = dx * launchForceMultiplier;
+    let vy = dy * launchForceMultiplier;
+    
+    for (let i = 0; i < 45; i++) {
+      px += vx;
+      py += vy;
+      vy += gravity;
+      
+      vx *= 0.995;
+      vy *= 0.995;
+      
+      if (py > groundY) break;
+      if (i % 2 === 0) {
+        sCtx.beginPath();
+        sCtx.arc(px, py, Math.max(1, 3.5 - (i * 0.04)), 0, Math.PI*2);
+        sCtx.fill();
+      }
+    }
+    sCtx.restore();
+  }
+  
+  // 10. Draw particles
+  sParticles.forEach(p => {
+    sCtx.save();
+    sCtx.globalAlpha = p.alpha;
+    sCtx.fillStyle = p.color;
+    sCtx.beginPath();
+    sCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    sCtx.fill();
+    sCtx.restore();
+  });
+  
+  sCtx.restore();
+}
+
+function checkAABBOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x &&
+         a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function resizeSlingshot() {
+  if (!sCanvas) return;
+  sW = sCanvas.width = window.innerWidth;
+  sH = sCanvas.height = window.innerHeight;
+  
+  slingshotPos.x = 180;
+  slingshotPos.y = sH - 180;
+  groundY = sH - 80;
+  
+  if (slingshotActive) {
+    buildLevel(currentLevelIdx);
+    prepareNextProjectile();
+  }
+}
+
+function startSlingshotLevel(idx) {
+  currentLevelIdx = idx;
+  sScore = 0;
+  
+  document.getElementById('slingshot-score').textContent = sScore;
+  document.getElementById('slingshot-level-name').textContent = levelNames[idx];
+  
+  if (idx === 0) shotsRemaining = 3;
+  else if (idx === 1) shotsRemaining = 3;
+  else if (idx === 2) shotsRemaining = 4;
+  
+  document.getElementById('slingshot-shots').textContent = shotsRemaining;
+  
+  document.getElementById('slingshot-level-select').classList.add('hidden');
+  document.getElementById('slingshot-gameover').classList.add('hidden');
+  document.getElementById('slingshot-victory').classList.add('hidden');
+  
+  buildLevel(currentLevelIdx);
+  prepareNextProjectile();
+}
+
+function exitSlingshot() {
+  slingshotActive = false;
+  if (slingshotAnimId) {
+    cancelAnimationFrame(slingshotAnimId);
+    slingshotAnimId = null;
+  }
+  document.getElementById('slingshot-level-select').classList.add('hidden');
+  document.getElementById('slingshot-gameover').classList.add('hidden');
+  document.getElementById('slingshot-victory').classList.add('hidden');
+}
+
+function slingshotTick(timestamp) {
+  if (!slingshotActive) return;
+  if (!slingshotLastTime) slingshotLastTime = timestamp;
+  let dt = (timestamp - slingshotLastTime) / 1000;
+  slingshotLastTime = timestamp;
+  
+  if (dt > 0.1) dt = 0.1;
+  
+  updateSlingshot(dt);
+  drawSlingshot();
+  
+  slingshotAnimId = requestAnimationFrame(slingshotTick);
+}
+
 
