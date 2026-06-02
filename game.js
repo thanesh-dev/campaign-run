@@ -1,12 +1,17 @@
 
 'use strict';
 
-// Polyfill Canvas roundRect for older browser versions
-if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
+// Polyfill Canvas roundRect to be completely safe across all browsers
+if (typeof CanvasRenderingContext2D !== 'undefined') {
   CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
     if (typeof r === 'undefined') r = 0;
     if (typeof r === 'number') {
       r = { tl: r, tr: r, br: r, bl: r };
+    } else if (Array.isArray(r)) {
+      if (r.length === 1) r = { tl: r[0], tr: r[0], br: r[0], bl: r[0] };
+      else if (r.length === 2) r = { tl: r[0], tr: r[1], br: r[0], bl: r[1] };
+      else if (r.length === 4) r = { tl: r[0], tr: r[1], br: r[2], bl: r[3] };
+      else r = { tl: 0, tr: 0, br: 0, bl: 0 };
     } else {
       r = Object.assign({ tl: 0, tr: 0, br: 0, bl: 0 }, r);
     }
@@ -4212,13 +4217,19 @@ function updateBrickGame(dt) {
         let nx = dx / (dist || 1);
         let ny = dy / (dist || 1);
         
-        if (nx !== 0 && ny !== 0) {
-          if (Math.abs(nx) > Math.abs(ny)) {
-            ball.vx = Math.abs(ball.vx) * (nx > 0 ? 1 : -1);
-          } else {
-            ball.vy = Math.abs(ball.vy) * (ny > 0 ? 1 : -1);
-          }
-        } else if (nx !== 0) {
+        if (dist === 0) {
+          nx = 0;
+          ny = -1;
+          dist = 0.001;
+        }
+        
+        // Resolve overlap/penetration (push ball out of brick)
+        let overlap = ball.r - dist;
+        ball.x += nx * overlap;
+        ball.y += ny * overlap;
+        
+        // Reverse velocity based on collision normal
+        if (Math.abs(nx) > Math.abs(ny)) {
           ball.vx = -ball.vx;
         } else {
           ball.vy = -ball.vy;
