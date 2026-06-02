@@ -3123,7 +3123,12 @@ function buildLevel(idx) {
   sParticles = [];
   
   const floorY = groundY;
-  const bx = Math.max(300, sW - 340); // responsive structures starting base
+  let bx = Math.max(300, sW - 340); // responsive structures starting base
+  if (sW < 600) {
+    if (idx === 0) bx = sW - 150;
+    else if (idx === 1) bx = sW - 220;
+    else if (idx === 2) bx = sW - 250;
+  }
   
   if (idx === 0) {
     // Level 1: Simple Stack
@@ -3827,9 +3832,15 @@ function resizeSlingshot() {
   sW = sCanvas.width = window.innerWidth;
   sH = sCanvas.height = window.innerHeight;
   
-  slingshotPos.x = 180;
-  slingshotPos.y = sH - 180;
-  groundY = sH - 80;
+  if (sW < 600) {
+    slingshotPos.x = 60;
+    slingshotPos.y = sH - 150;
+    groundY = sH - 60;
+  } else {
+    slingshotPos.x = 180;
+    slingshotPos.y = sH - 180;
+    groundY = sH - 80;
+  }
   
   if (slingshotActive) {
     buildLevel(currentLevelIdx);
@@ -3921,6 +3932,40 @@ function initBrickGame() {
   resizeBrickGame();
   window.addEventListener('resize', resizeBrickGame);
   
+  // Connect input listeners
+  const wireBrickMobileBtn = (id, key) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const press = (e) => { e.preventDefault(); sfx.init(); pKeys[key] = true; };
+    const release = (e) => { e.preventDefault(); pKeys[key] = false; };
+    btn.addEventListener('pointerdown', press);
+    btn.addEventListener('pointerup', release);
+    btn.addEventListener('pointercancel', release);
+    btn.addEventListener('pointerout', release);
+  };
+  wireBrickMobileBtn('btn-b-left', 'Left');
+  wireBrickMobileBtn('btn-b-right', 'Right');
+
+  const btnLaunch = document.getElementById('btn-b-launch');
+  if (btnLaunch) {
+    btnLaunch.onpointerdown = (e) => {
+      e.preventDefault();
+      sfx.init();
+      if (bGameState === 'ready') {
+        bGameState = 'playing';
+        bBalls.forEach(b => {
+          if (b.stuck) {
+            b.stuck = false;
+            b.vx = (Math.random() - 0.5) * 4;
+            b.vy = -6;
+          }
+        });
+      } else if (bGameState === 'playing' && powerupTimers.laser > 0) {
+        shootLasers();
+      }
+    };
+  }
+
   // Connect input listeners
   bCanvas.onpointermove = (e) => {
     const rect = bCanvas.getBoundingClientRect();
@@ -4519,9 +4564,23 @@ function drawBrickGame() {
 
 function resizeBrickGame() {
   if (!bCanvas) return;
+  const oldW = bW;
   bW = bCanvas.width = window.innerWidth;
   bH = bCanvas.height = window.innerHeight;
   bPaddle.y = bH - 110;
+  
+  if (oldW && oldW !== bW && bBricks.length > 0) {
+    const cols = 9;
+    const padding = 6;
+    const totalPadding = (cols + 1) * padding;
+    const newBrickW = (bW - totalPadding) / cols;
+    
+    bBricks.forEach(b => {
+      const col = Math.round((b.x - padding) / (b.w + padding));
+      b.x = padding + col * (newBrickW + padding);
+      b.w = newBrickW;
+    });
+  }
   
   if (brickActive && bBricks.length === 0) {
     buildBrickLevel();
