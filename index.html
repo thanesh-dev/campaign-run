@@ -55,6 +55,14 @@
           <p class="hub-card-desc">Launch vote capsules with a physics slingshot! Smash down corrupt stacks, pop targets, and retrieve the stolen ballot boxes!</p>
           <button class="btn-hub" id="btn-goto-slingshot">Play Now ▶</button>
         </div>
+
+        <!-- Ballot Breaker Card -->
+        <div class="hub-card" id="card-brick">
+          <div class="hub-card-icon">🧱</div>
+          <h2 class="hub-card-title">Ballot Breaker</h2>
+          <p class="hub-card-desc">Break through walls of corruption! Bounce the ballot ball, crush corrupt bricks, catch power-ups, and clear the screen!</p>
+          <button class="btn-hub" id="btn-goto-brick">Play Now ▶</button>
+        </div>
       </div>
     </div>
   </div>
@@ -514,6 +522,59 @@
         </div>
         <button class="btn-overlay" id="btn-slingshot-next">▶ Next Level</button>
         <button class="btn-overlay secondary" id="btn-slingshot-victory-menu">🏠 Exit to Portal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BRICK BREAKER SCREEN -->
+  <div id="brick-screen" class="screen">
+    <div class="screen-bg"></div>
+    <div class="parallax-stars" id="brick-stars"></div>
+    <canvas id="brickCanvas"></canvas>
+
+    <!-- Brick HUD -->
+    <div class="brick-hud">
+      <div class="b-hud-left">
+        <button class="btn-back-hub" id="btn-brick-back">🏠 Exit</button>
+        <div class="b-stats">
+          <span class="b-score-lbl">SCORE: <span id="brick-score">0</span></span>
+          <span class="b-lives-lbl">❤️ LIVES: <span id="brick-lives">3</span></span>
+        </div>
+      </div>
+      <div class="b-hud-center">
+        <div class="b-level-name" id="brick-level-name">LEVEL 1: CORRUPTION WALL</div>
+      </div>
+      <div class="b-hud-right">
+        <div class="b-power-container">
+          <span class="b-power-lbl">ACTIVE EFFECT:</span>
+          <span class="b-power-val" id="brick-power-type">None</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over overlay for Brick Breaker -->
+    <div id="brick-gameover" class="brick-overlay hidden">
+      <div class="overlay-card">
+        <h2 style="color:var(--deep-red);">💥 Out of Ballots!</h2>
+        <p>Your campaign ran out of steam. Try again to clear the corruption!</p>
+        <button class="btn-overlay" id="btn-brick-restart">🔄 Restart</button>
+        <button class="btn-overlay secondary" id="btn-brick-gameover-menu">🏠 Exit to Portal</button>
+      </div>
+    </div>
+
+    <!-- Victory overlay for Brick Breaker -->
+    <div id="brick-victory" class="brick-overlay hidden">
+      <div class="overlay-card">
+        <h2 style="color:var(--gold);">🏆 Landslide Victory!</h2>
+        <p>All corruption blocks cleared! You've cleaned up the streets!</p>
+        <div class="result-grid">
+          <div class="result-item" style="width:100%;">
+            <span class="result-label">FINAL SCORE</span>
+            <span class="result-value" id="brick-victory-score">0</span>
+          </div>
+        </div>
+        <button class="btn-overlay" id="btn-brick-next">▶ Play Again</button>
+        <button class="btn-overlay secondary" id="btn-brick-victory-menu">🏠 Exit to Portal</button>
       </div>
     </div>
   </div>

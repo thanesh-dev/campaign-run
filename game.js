@@ -1,9 +1,33 @@
 
 'use strict';
 
+// Polyfill Canvas roundRect for older browser versions
+if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    if (typeof r === 'undefined') r = 0;
+    if (typeof r === 'number') {
+      r = { tl: r, tr: r, br: r, bl: r };
+    } else {
+      r = Object.assign({ tl: 0, tr: 0, br: 0, bl: 0 }, r);
+    }
+    this.beginPath();
+    this.moveTo(x + r.tl, y);
+    this.lineTo(x + w - r.tr, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+    this.lineTo(x + w, y + h - r.br);
+    this.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+    this.lineTo(x + r.bl, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+    this.lineTo(x, y + r.tl);
+    this.quadraticCurveTo(x, y, x + r.tl, y);
+    this.closePath();
+    return this;
+  };
+}
+
 // ─── STARS ───────────────────────────────────────────────────────────────────
 (function createStars() {
-  ['stars', 'hub-stars', 'galactic-stars', 'slingshot-stars'].forEach(id => {
+  ['stars', 'hub-stars', 'galactic-stars', 'slingshot-stars', 'brick-stars'].forEach(id => {
     const c = document.getElementById(id);
     if (!c) return;
     for (let i = 0; i < 80; i++) {
@@ -951,6 +975,43 @@ document.getElementById('btn-slingshot-victory-menu').onclick = () => {
   showScreen('hub-screen');
 };
 
+// Brick Breaker Transitions
+document.getElementById('btn-goto-brick').onclick = () => {
+  sfx.play('click');
+  initBrickGame();
+  showScreen('brick-screen');
+};
+
+document.getElementById('btn-brick-back').onclick = () => {
+  sfx.play('click');
+  exitBrickGame();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-brick-gameover-menu').onclick = () => {
+  sfx.play('click');
+  exitBrickGame();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-brick-victory-menu').onclick = () => {
+  sfx.play('click');
+  exitBrickGame();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-brick-restart').onclick = () => {
+  sfx.play('click');
+  document.getElementById('brick-gameover').classList.add('hidden');
+  startBrickGame();
+};
+
+document.getElementById('btn-brick-next').onclick = () => {
+  sfx.play('click');
+  document.getElementById('brick-victory').classList.add('hidden');
+  startBrickGame();
+};
+
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 initCanvas();
 showScreen('hub-screen');
@@ -1107,6 +1168,27 @@ const sfx = {
         gain.gain.setValueAtTime(0.08, now);
         gain.gain.linearRampToValueAtTime(0, now + 0.2);
         osc.start(now); osc.stop(now + 0.2);
+      } else if (type === 'bounce') {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(340, now);
+        osc.frequency.exponentialRampToValueAtTime(480, now + 0.08);
+        gain.gain.setValueAtTime(0.06, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.08);
+        osc.start(now); osc.stop(now + 0.08);
+      } else if (type === 'powerup') {
+        [0, 0.06, 0.12].forEach((delay, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.connect(gain); gain.connect(this.ctx.destination);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(560 + idx * 180, now + delay);
+          gain.gain.setValueAtTime(0.06, now + delay);
+          gain.gain.linearRampToValueAtTime(0, now + delay + 0.15);
+          osc.start(now + delay); osc.stop(now + delay + 0.15);
+        });
       }
     } catch (e) {
       console.log('Audio error:', e);
@@ -3729,5 +3811,660 @@ function slingshotTick(timestamp) {
   
   slingshotAnimId = requestAnimationFrame(slingshotTick);
 }
+
+
+// ==============================================================================
+// ─── BALLOT BREAKER (BRICK BREAKER) GAME MODULE ───────────────────────────────
+// ==============================================================================
+let brickActive = false;
+let brickLastTime = 0;
+let brickAnimId = null;
+
+let bCanvas, bCtx, bW, bH;
+let bGameState = 'ready'; // ready | playing | over | win
+
+let bScore = 0;
+let bLives = 3;
+let bLevel = 1;
+
+let bPaddle = { x: 0, y: 0, w: 120, h: 15, baseW: 120, speed: 12 };
+let bBalls = []; // list of active balls
+let bBricks = [];
+let bPowerups = [];
+let bParticles = [];
+let bLasers = [];
+let bScreenShake = 0;
+
+let pKeys = { Left: false, Right: false, Space: false };
+
+// Timers for active powerups
+let powerupTimers = {
+  wide: 0,
+  laser: 0
+};
+
+function initBrickGame() {
+  bCanvas = document.getElementById('brickCanvas');
+  bCtx = bCanvas.getContext('2d');
+  
+  resizeBrickGame();
+  window.addEventListener('resize', resizeBrickGame);
+  
+  // Connect input listeners
+  bCanvas.onpointermove = (e) => {
+    const rect = bCanvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    bPaddle.x = px - bPaddle.w / 2;
+    // Keep paddle on-screen
+    if (bPaddle.x < 0) bPaddle.x = 0;
+    if (bPaddle.x + bPaddle.w > bW) bPaddle.x = bW - bPaddle.w;
+  };
+  
+  bCanvas.onpointerdown = (e) => {
+    sfx.init();
+    if (bGameState === 'ready') {
+      bGameState = 'playing';
+      bBalls.forEach(b => {
+        if (b.stuck) {
+          b.stuck = false;
+          b.vx = (Math.random() - 0.5) * 4;
+          b.vy = -6;
+        }
+      });
+    } else if (bGameState === 'playing' && powerupTimers.laser > 0) {
+      shootLasers();
+    }
+  };
+  
+  window.onkeydown = (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'a') pKeys.Left = true;
+    if (e.key === 'ArrowRight' || e.key === 'd') pKeys.Right = true;
+    if (e.key === ' ' || e.key === 'Spacebar') {
+      pKeys.Space = true;
+      if (bGameState === 'ready') {
+        bGameState = 'playing';
+        bBalls.forEach(b => {
+          if (b.stuck) {
+            b.stuck = false;
+            b.vx = (Math.random() - 0.5) * 4;
+            b.vy = -6;
+          }
+        });
+      } else if (bGameState === 'playing' && powerupTimers.laser > 0) {
+        shootLasers();
+      }
+    }
+  };
+  window.onkeyup = (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'a') pKeys.Left = false;
+    if (e.key === 'ArrowRight' || e.key === 'd') pKeys.Right = false;
+    if (e.key === ' ' || e.key === 'Spacebar') pKeys.Space = false;
+  };
+  
+  startBrickGame();
+  
+  brickActive = true;
+  brickLastTime = 0;
+  brickAnimId = requestAnimationFrame(brickTick);
+}
+
+function exitBrickGame() {
+  brickActive = false;
+  if (brickAnimId) {
+    cancelAnimationFrame(brickAnimId);
+    brickAnimId = null;
+  }
+  window.onkeydown = null;
+  window.onkeyup = null;
+  document.getElementById('brick-gameover').classList.add('hidden');
+  document.getElementById('brick-victory').classList.add('hidden');
+}
+
+function startBrickGame() {
+  bScore = 0;
+  bLives = 3;
+  bLevel = 1;
+  
+  powerupTimers.wide = 0;
+  powerupTimers.laser = 0;
+  bPaddle.w = bPaddle.baseW;
+  
+  document.getElementById('brick-score').textContent = bScore;
+  document.getElementById('brick-lives').textContent = bLives;
+  document.getElementById('brick-power-type').textContent = 'None';
+  
+  document.getElementById('brick-gameover').classList.add('hidden');
+  document.getElementById('brick-victory').classList.add('hidden');
+  
+  bPowerups = [];
+  bParticles = [];
+  bLasers = [];
+  bScreenShake = 0;
+  
+  buildBrickLevel();
+  resetBall();
+}
+
+function resetBall() {
+  bPaddle.x = bW / 2 - bPaddle.w / 2;
+  bPaddle.y = bH - 110;
+  
+  bBalls = [{
+    x: bW / 2,
+    y: bPaddle.y - 12,
+    vx: 0,
+    vy: 0,
+    r: 9,
+    stuck: true,
+    speed: 6.5
+  }];
+  
+  bGameState = 'ready';
+}
+
+function buildBrickLevel() {
+  bBricks = [];
+  
+  const cols = 9;
+  const rows = 5;
+  const brickH = 22;
+  const padding = 6;
+  const topOffset = 110;
+  
+  const totalPadding = (cols + 1) * padding;
+  const brickW = (bW - totalPadding) / cols;
+  
+  const colors = {
+    normal: '#ff4d4d',
+    double: '#ff9f43',
+    armored: '#95a5a6',
+    golden: '#f1c40f'
+  };
+  
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      let type = 'normal';
+      let hp = 1;
+      
+      if (r === 0) {
+        type = 'armored'; hp = 3;
+      } else if (r === 1) {
+        type = 'double'; hp = 2;
+      } else if (r === 2) {
+        type = 'golden'; hp = 1;
+      } else {
+        type = 'normal'; hp = 1;
+      }
+      
+      const bx = padding + c * (brickW + padding);
+      const by = topOffset + r * (brickH + padding);
+      
+      bBricks.push({
+        x: bx,
+        y: by,
+        w: brickW,
+        h: brickH,
+        type: type,
+        hp: hp,
+        maxHp: hp,
+        color: colors[type],
+        points: hp * 150
+      });
+    }
+  }
+}
+
+function shootLasers() {
+  sfx.play('laser');
+  bLasers.push({ x: bPaddle.x + 10, y: bPaddle.y, w: 4, h: 12, vy: -9 });
+  bLasers.push({ x: bPaddle.x + bPaddle.w - 14, y: bPaddle.y, w: 4, h: 12, vy: -9 });
+}
+
+function catchPowerup(type) {
+  sfx.play('powerup');
+  
+  if (type === 'wide') {
+    powerupTimers.wide = 10;
+    bPaddle.w = bPaddle.baseW * 1.5;
+    document.getElementById('brick-power-type').textContent = 'Wide Paddle 📏';
+    spawnBrickParticles(bPaddle.x + bPaddle.w/2, bPaddle.y, '#f1c40f', 12);
+  } 
+  else if (type === 'laser') {
+    powerupTimers.laser = 8;
+    document.getElementById('brick-power-type').textContent = 'Laser Blaster ⚡';
+    spawnBrickParticles(bPaddle.x + bPaddle.w/2, bPaddle.y, '#ff4d4d', 12);
+  } 
+  else if (type === 'multi') {
+    const baseBall = bBalls[0] || { x: bW/2, y: bH/2, vx: 0, vy: -5 };
+    bBalls.push({
+      x: baseBall.x,
+      y: baseBall.y,
+      vx: baseBall.vx + 2.5,
+      vy: baseBall.vy * 0.9,
+      r: 9,
+      stuck: false,
+      speed: 6.5
+    });
+    bBalls.push({
+      x: baseBall.x,
+      y: baseBall.y,
+      vx: baseBall.vx - 2.5,
+      vy: baseBall.vy * 0.9,
+      r: 9,
+      stuck: false,
+      speed: 6.5
+    });
+    spawnBrickParticles(baseBall.x, baseBall.y, '#55efc4', 15);
+  } 
+  else if (type === 'life') {
+    bLives++;
+    document.getElementById('brick-lives').textContent = bLives;
+    spawnBrickParticles(bPaddle.x + bPaddle.w/2, bPaddle.y, '#ff4757', 15);
+  }
+}
+
+function spawnBrickParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 4 + 1.2;
+    bParticles.push({
+      x: x,
+      y: y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: Math.random() * 3.5 + 1.5,
+      color: color,
+      alpha: 1.0,
+      decay: Math.random() * 0.05 + 0.02
+    });
+  }
+}
+
+function updateBrickGame(dt) {
+  if (powerupTimers.wide > 0) {
+    powerupTimers.wide -= dt;
+    if (powerupTimers.wide <= 0) {
+      bPaddle.w = bPaddle.baseW;
+      document.getElementById('brick-power-type').textContent = 'None';
+    }
+  }
+  if (powerupTimers.laser > 0) {
+    powerupTimers.laser -= dt;
+    if (powerupTimers.laser <= 0) {
+      document.getElementById('brick-power-type').textContent = 'None';
+    }
+  }
+  
+  if (pKeys.Left) {
+    bPaddle.x -= bPaddle.speed;
+    if (bPaddle.x < 0) bPaddle.x = 0;
+  }
+  if (pKeys.Right) {
+    bPaddle.x += bPaddle.speed;
+    if (bPaddle.x + bPaddle.w > bW) bPaddle.x = bW - bPaddle.w;
+  }
+  
+  for (let i = bLasers.length - 1; i >= 0; i--) {
+    let laser = bLasers[i];
+    laser.y += laser.vy;
+    
+    let hitBrick = false;
+    for (let j = bBricks.length - 1; j >= 0; j--) {
+      let b = bBricks[j];
+      if (laser.x > b.x && laser.x < b.x + b.w && laser.y > b.y && laser.y < b.y + b.h) {
+        b.hp--;
+        bScore += 50;
+        spawnBrickParticles(laser.x, laser.y, b.color, 6);
+        sfx.play('hit');
+        hitBrick = true;
+        
+        if (b.hp <= 0) {
+          bScore += b.points;
+          spawnBrickParticles(b.x + b.w/2, b.y + b.h/2, b.color, 14);
+          if (b.type === 'golden') {
+            triggerPowerupDrop(b.x + b.w/2, b.y + b.h);
+          }
+          bBricks.splice(j, 1);
+        }
+        break;
+      }
+    }
+    
+    if (hitBrick || laser.y < 80) {
+      bLasers.splice(i, 1);
+    }
+  }
+  
+  for (let i = bPowerups.length - 1; i >= 0; i--) {
+    let p = bPowerups[i];
+    p.y += p.vy;
+    
+    if (p.x > bPaddle.x && p.x < bPaddle.x + bPaddle.w && p.y + p.size > bPaddle.y && p.y < bPaddle.y + bPaddle.h) {
+      catchPowerup(p.type);
+      bPowerups.splice(i, 1);
+      continue;
+    }
+    
+    if (p.y > bH) {
+      bPowerups.splice(i, 1);
+    }
+  }
+  
+  for (let i = bBalls.length - 1; i >= 0; i--) {
+    let ball = bBalls[i];
+    
+    if (ball.stuck) {
+      ball.x = bPaddle.x + bPaddle.w / 2;
+      ball.y = bPaddle.y - ball.r - 2;
+      continue;
+    }
+    
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    
+    if (ball.x - ball.r < 0) {
+      ball.x = ball.r;
+      ball.vx = -ball.vx;
+      sfx.play('bounce');
+    }
+    if (ball.x + ball.r > bW) {
+      ball.x = bW - ball.r;
+      ball.vx = -ball.vx;
+      sfx.play('bounce');
+    }
+    
+    if (ball.y - ball.r < 80) {
+      ball.y = 80 + ball.r;
+      ball.vy = -ball.vy;
+      sfx.play('bounce');
+    }
+    
+    if (ball.y + ball.r > bPaddle.y && ball.y - ball.r < bPaddle.y + bPaddle.h && ball.x + ball.r > bPaddle.x && ball.x - ball.r < bPaddle.x + bPaddle.w) {
+      if (ball.vy > 0) {
+        ball.y = bPaddle.y - ball.r;
+        ball.vy = -ball.vy;
+        sfx.play('bounce');
+        
+        let hitPos = (ball.x - (bPaddle.x + bPaddle.w / 2)) / (bPaddle.w / 2);
+        ball.vx = hitPos * 5.5;
+        
+        let curSpeed = Math.sqrt(ball.vx*ball.vx + ball.vy*ball.vy);
+        ball.vx = (ball.vx / curSpeed) * ball.speed;
+        ball.vy = (ball.vy / curSpeed) * ball.speed;
+      }
+    }
+    
+    for (let j = bBricks.length - 1; j >= 0; j--) {
+      let b = bBricks[j];
+      
+      let closestX = Math.max(b.x, Math.min(ball.x, b.x + b.w));
+      let closestY = Math.max(b.y, Math.min(ball.y, b.y + b.h));
+      let dx = ball.x - closestX;
+      let dy = ball.y - closestY;
+      let dist = Math.sqrt(dx*dx + dy*dy);
+      
+      if (dist < ball.r) {
+        b.hp--;
+        bScore += 100;
+        spawnBrickParticles(closestX, closestY, b.color, 6);
+        sfx.play('hit');
+        
+        let nx = dx / (dist || 1);
+        let ny = dy / (dist || 1);
+        
+        if (nx !== 0 && ny !== 0) {
+          if (Math.abs(nx) > Math.abs(ny)) {
+            ball.vx = Math.abs(ball.vx) * (nx > 0 ? 1 : -1);
+          } else {
+            ball.vy = Math.abs(ball.vy) * (ny > 0 ? 1 : -1);
+          }
+        } else if (nx !== 0) {
+          ball.vx = -ball.vx;
+        } else {
+          ball.vy = -ball.vy;
+        }
+        
+        if (b.hp <= 0) {
+          bScore += b.points;
+          spawnBrickParticles(b.x + b.w/2, b.y + b.h/2, b.color, 14);
+          sfx.play('explosion');
+          bScreenShake = 8;
+          
+          if (b.type === 'golden') {
+            triggerPowerupDrop(b.x + b.w/2, b.y + b.h);
+          }
+          bBricks.splice(j, 1);
+        }
+        break;
+      }
+    }
+    
+    if (ball.y - ball.r > bH) {
+      bBalls.splice(i, 1);
+    }
+  }
+  
+  if (bBalls.length === 0 && bGameState !== 'over') {
+    bLives--;
+    document.getElementById('brick-lives').textContent = bLives;
+    
+    if (bLives <= 0) {
+      bGameState = 'over';
+      document.getElementById('brick-gameover').classList.remove('hidden');
+    } else {
+      resetBall();
+    }
+  }
+  
+  if (bBricks.length === 0 && bGameState !== 'win') {
+    bGameState = 'win';
+    sfx.play('level');
+    setTimeout(() => {
+      document.getElementById('brick-victory-score').textContent = bScore;
+      document.getElementById('brick-victory').classList.remove('hidden');
+    }, 1000);
+  }
+  
+  bParticles.forEach((p, idx) => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.alpha -= p.decay;
+    if (p.alpha <= 0) {
+      bParticles.splice(idx, 1);
+    }
+  });
+  
+  document.getElementById('brick-score').textContent = bScore;
+}
+
+function triggerPowerupDrop(x, y) {
+  const types = ['wide', 'laser', 'multi', 'life'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const colors = { wide: '#f1c40f', laser: '#ff4d4d', multi: '#55efc4', life: '#ff4757' };
+  
+  bPowerups.push({
+    x: x,
+    y: y,
+    vy: 2.2,
+    size: 14,
+    type: type,
+    color: colors[type]
+  });
+}
+
+function drawBrickGame() {
+  bCtx.clearRect(0, 0, bW, bH);
+  
+  bCtx.save();
+  
+  if (bScreenShake > 0.1) {
+    const dx = (Math.random() - 0.5) * bScreenShake;
+    const dy = (Math.random() - 0.5) * bScreenShake;
+    bCtx.translate(dx, dy);
+    bScreenShake *= 0.9;
+  }
+  
+  bBricks.forEach(b => {
+    bCtx.save();
+    
+    bCtx.fillStyle = b.color;
+    bCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+    bCtx.lineWidth = 1;
+    
+    bCtx.shadowBlur = 8;
+    bCtx.shadowColor = b.color;
+    
+    bCtx.beginPath();
+    bCtx.roundRect(b.x, b.y, b.w, b.h, 4);
+    bCtx.fill();
+    bCtx.stroke();
+    
+    bCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    bCtx.beginPath();
+    bCtx.moveTo(b.x + 4, b.y + 3);
+    bCtx.lineTo(b.x + b.w - 4, b.y + 3);
+    bCtx.stroke();
+    
+    if (b.hp < b.maxHp) {
+      let pct = b.hp / b.maxHp;
+      bCtx.fillStyle = 'rgba(0,0,0,0.5)';
+      bCtx.fillRect(b.x + b.w/4, b.y + b.h - 6, b.w/2, 3);
+      bCtx.fillStyle = '#ff4757';
+      bCtx.fillRect(b.x + b.w/4, b.y + b.h - 6, (b.w/2) * pct, 3);
+    }
+    
+    bCtx.restore();
+  });
+  
+  bLasers.forEach(l => {
+    bCtx.save();
+    bCtx.fillStyle = '#ff4d4d';
+    bCtx.shadowBlur = 8;
+    bCtx.shadowColor = '#ff4d4d';
+    bCtx.fillRect(l.x, l.y, l.w, l.h);
+    bCtx.restore();
+  });
+  
+  bPowerups.forEach(p => {
+    bCtx.save();
+    
+    bCtx.fillStyle = p.color;
+    bCtx.strokeStyle = '#fff';
+    bCtx.lineWidth = 1.5;
+    bCtx.shadowBlur = 10;
+    bCtx.shadowColor = p.color;
+    
+    bCtx.beginPath();
+    bCtx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
+    bCtx.fill();
+    bCtx.stroke();
+    
+    bCtx.fillStyle = '#000';
+    bCtx.font = 'bold 8px Outfit';
+    bCtx.textAlign = 'center';
+    bCtx.textBaseline = 'middle';
+    let icon = '🎁';
+    if (p.type === 'wide') icon = '📏';
+    else if (p.type === 'laser') icon = '⚡';
+    else if (p.type === 'multi') icon = '🥎';
+    else if (p.type === 'life') icon = '❤️';
+    bCtx.fillText(icon, p.x, p.y);
+    
+    bCtx.restore();
+  });
+  
+  bCtx.save();
+  let grad = bCtx.createLinearGradient(bPaddle.x, bPaddle.y, bPaddle.x, bPaddle.y + bPaddle.h);
+  if (powerupTimers.laser > 0) {
+    grad.addColorStop(0, '#ff7675'); grad.addColorStop(1, '#ff4d4d');
+    bCtx.shadowColor = '#ff4d4d';
+  } else if (powerupTimers.wide > 0) {
+    grad.addColorStop(0, '#ffeaa7'); grad.addColorStop(1, '#f1c40f');
+    bCtx.shadowColor = '#f1c40f';
+  } else {
+    grad.addColorStop(0, '#55efc4'); grad.addColorStop(1, '#00b894');
+    bCtx.shadowColor = '#00b894';
+  }
+  
+  bCtx.fillStyle = grad;
+  bCtx.strokeStyle = '#fff';
+  bCtx.lineWidth = 2;
+  bCtx.shadowBlur = 12;
+  
+  bCtx.beginPath();
+  bCtx.roundRect(bPaddle.x, bPaddle.y, bPaddle.w, bPaddle.h, 6);
+  bCtx.fill();
+  bCtx.stroke();
+  
+  if (powerupTimers.laser > 0) {
+    bCtx.fillStyle = '#2d3436';
+    bCtx.fillRect(bPaddle.x + 6, bPaddle.y - 6, 8, 6);
+    bCtx.fillRect(bPaddle.x + bPaddle.w - 14, bPaddle.y - 6, 8, 6);
+  }
+  bCtx.restore();
+  
+  bBalls.forEach(b => {
+    bCtx.save();
+    
+    bCtx.fillStyle = '#fff';
+    bCtx.strokeStyle = '#1dd1a1';
+    bCtx.lineWidth = 2.5;
+    bCtx.shadowBlur = 8;
+    bCtx.shadowColor = '#1dd1a1';
+    
+    bCtx.beginPath();
+    bCtx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    bCtx.fill();
+    bCtx.stroke();
+    
+    bCtx.restore();
+  });
+  
+  bParticles.forEach(p => {
+    bCtx.save();
+    bCtx.globalAlpha = p.alpha;
+    bCtx.fillStyle = p.color;
+    bCtx.beginPath();
+    bCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    bCtx.fill();
+    bCtx.restore();
+  });
+  
+  bCtx.strokeStyle = '#1a3d54';
+  bCtx.lineWidth = 4;
+  bCtx.beginPath();
+  bCtx.moveTo(0, 80);
+  bCtx.lineTo(bW, 80);
+  bCtx.stroke();
+  
+  bCtx.restore();
+}
+
+function resizeBrickGame() {
+  if (!bCanvas) return;
+  bW = bCanvas.width = window.innerWidth;
+  bH = bCanvas.height = window.innerHeight;
+  bPaddle.y = bH - 110;
+  
+  if (brickActive && bBricks.length === 0) {
+    buildBrickLevel();
+    resetBall();
+  }
+}
+
+function brickTick(timestamp) {
+  if (!brickActive) return;
+  if (!brickLastTime) brickLastTime = timestamp;
+  let dt = (timestamp - brickLastTime) / 1000;
+  brickLastTime = timestamp;
+  
+  if (dt > 0.1) dt = 0.1;
+  
+  updateBrickGame(dt);
+  drawBrickGame();
+  
+  brickAnimId = requestAnimationFrame(brickTick);
+}
+
 
 
