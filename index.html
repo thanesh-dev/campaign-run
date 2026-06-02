@@ -63,6 +63,14 @@
           <p class="hub-card-desc">Break through walls of corruption! Bounce the ballot ball, crush corrupt bricks, catch power-ups, and clear the screen!</p>
           <button class="btn-hub" id="btn-goto-brick">Play Now ▶</button>
         </div>
+
+        <!-- Platform Campaign Card -->
+        <div class="hub-card" id="card-platformer">
+          <div class="hub-card-icon">🏃‍♂️</div>
+          <h2 class="hub-card-title">Platform Campaign</h2>
+          <p class="hub-card-desc">Run, jump, and stomp on campaign trails! Dodge fake news, collect voter ballots, and reach the election podium to win!</p>
+          <button class="btn-hub" id="btn-goto-platformer">Play Now ▶</button>
+        </div>
       </div>
     </div>
   </div>
@@ -575,6 +583,80 @@
         </div>
         <button class="btn-overlay" id="btn-brick-next">▶ Play Again</button>
         <button class="btn-overlay secondary" id="btn-brick-victory-menu">🏠 Exit to Portal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLATFORM CAMPAIGN SCREEN -->
+  <div id="platformer-screen" class="screen">
+    <div class="screen-bg"></div>
+    <div class="parallax-stars" id="platformer-stars"></div>
+    <canvas id="platformerCanvas"></canvas>
+
+    <!-- Platform HUD -->
+    <div class="platformer-hud">
+      <div class="p-hud-left">
+        <button class="btn-back-hub" id="btn-platformer-back">🏠 Exit</button>
+        <div class="p-stats">
+          <span class="p-score-lbl">SCORE: <span id="platformer-score">0</span></span>
+          <span class="p-lives-lbl">❤️ LIVES: <span id="platformer-lives">3</span></span>
+        </div>
+      </div>
+      <div class="p-hud-center">
+        <div class="p-level-name" id="platformer-level-name">LEVEL 1: GRASSROOTS RUN</div>
+      </div>
+      <div class="p-hud-right">
+      </div>
+    </div>
+
+    <!-- On-screen controls for mobile -->
+    <div class="mobile-controls" id="platformer-mobile-controls">
+      <div class="dpad">
+        <button class="btn-dpad" id="btn-p-left">◀</button>
+        <button class="btn-dpad" id="btn-p-right">▶</button>
+      </div>
+      <div class="action-buttons">
+        <button class="btn-action" id="btn-p-jump">JUMP</button>
+      </div>
+    </div>
+
+    <!-- Level Selection overlay -->
+    <div id="platformer-level-select" class="platformer-overlay">
+      <div class="overlay-card">
+        <h2>🏃‍♂️ Platform Campaign</h2>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-top:-10px; text-align:center;">Jump and run to the podium!</p>
+        <div class="p-level-grid" style="display:flex; flex-direction:column; gap:12px; width:100%;">
+          <button class="btn-overlay p-level-btn" data-level="0">Level 1: Grassroots Trail</button>
+          <button class="btn-overlay p-level-btn" data-level="1">Level 2: State Primaries</button>
+          <button class="btn-overlay p-level-btn" data-level="2">Level 3: Capital Hill Climb</button>
+        </div>
+        <button class="btn-overlay secondary" id="btn-platformer-select-back" style="margin-top:10px;">🏠 Exit to Portal</button>
+      </div>
+    </div>
+
+    <!-- Game Over overlay -->
+    <div id="platformer-gameover" class="platformer-overlay hidden">
+      <div class="overlay-card">
+        <h2 style="color:var(--deep-red);">💥 Campaign Derailed!</h2>
+        <p>You fell behind or ran out of candidate energy. Try again!</p>
+        <button class="btn-overlay" id="btn-platformer-restart">🔄 Try Again</button>
+        <button class="btn-overlay secondary" id="btn-platformer-gameover-menu">🏠 Exit to Portal</button>
+      </div>
+    </div>
+
+    <!-- Victory overlay -->
+    <div id="platformer-victory" class="platformer-overlay hidden">
+      <div class="overlay-card">
+        <h2 style="color:var(--gold);">🏆 Primary Election Won!</h2>
+        <p>You reached the podium and rallied the voters!</p>
+        <div class="result-grid">
+          <div class="result-item" style="width:100%;">
+            <span class="result-label">LEVEL SCORE</span>
+            <span class="result-value" id="platformer-victory-score">0</span>
+          </div>
+        </div>
+        <button class="btn-overlay" id="btn-platformer-next">▶ Next Level</button>
+        <button class="btn-overlay secondary" id="btn-platformer-victory-menu">🏠 Exit to Portal</button>
       </div>
     </div>
   </div>

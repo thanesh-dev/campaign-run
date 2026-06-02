@@ -1023,6 +1023,56 @@ document.getElementById('btn-brick-next').onclick = () => {
   startBrickGame();
 };
 
+// Platform Campaign Transitions
+document.getElementById('btn-goto-platformer').onclick = () => {
+  sfx.play('click');
+  initPlatformer();
+  showScreen('platformer-screen');
+};
+
+document.getElementById('btn-platformer-back').onclick = () => {
+  sfx.play('click');
+  exitPlatformer();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-platformer-select-back').onclick = () => {
+  sfx.play('click');
+  exitPlatformer();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-platformer-gameover-menu').onclick = () => {
+  sfx.play('click');
+  exitPlatformer();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-platformer-victory-menu').onclick = () => {
+  sfx.play('click');
+  exitPlatformer();
+  showScreen('hub-screen');
+};
+
+document.getElementById('btn-platformer-restart').onclick = () => {
+  sfx.play('click');
+  document.getElementById('platformer-gameover').classList.add('hidden');
+  startPlatformerLevel(pCurrentLevelIdx);
+};
+
+document.getElementById('btn-platformer-next').onclick = () => {
+  sfx.play('click');
+  document.getElementById('platformer-victory').classList.add('hidden');
+  if (pCurrentLevelIdx < 2) {
+    pCurrentLevelIdx++;
+    startPlatformerLevel(pCurrentLevelIdx);
+  } else {
+    exitPlatformer();
+    showScreen('hub-screen');
+  }
+};
+
+
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 initCanvas();
 showScreen('hub-screen');
@@ -4492,6 +4542,773 @@ function brickTick(timestamp) {
   
   brickAnimId = requestAnimationFrame(brickTick);
 }
+
+
+// ==============================================================================
+// ─── PLATFORM CAMPAIGN GAME MODULE ────────────────────────────────────────────
+// ==============================================================================
+
+const P_BLOCK_SIZE = 40;
+let pActive = false;
+let pCanvas, pCtx;
+let pW = 800, pH = 600;
+let pLastTime = 0;
+let pAnimId = null;
+let pCurrentLevelIdx = 0;
+let pScore = 0;
+let pLives = 3;
+let pGameState = 'select'; // 'select', 'playing', 'victory', 'gameover'
+
+let pPlayer = {
+  x: 80,
+  y: 100,
+  vx: 0,
+  vy: 0,
+  w: 30,
+  h: 44,
+  grounded: false,
+  hurtCooldown: 0,
+  facing: 'right',
+  animFrame: 0,
+  capeAngle: 0
+};
+
+let platKeys = { Left: false, Right: false, Jump: false };
+let pCamX = 0;
+let pBlocks = [];
+let pEnemies = [];
+let pCollectibles = [];
+let pParticles = [];
+let pPodium = { x: 0, y: 0, w: 40, h: 120 };
+
+const pLevelTitles = [
+  "LEVEL 1: GRASSROOTS TRAIL",
+  "LEVEL 2: STATE PRIMARIES",
+  "LEVEL 3: CAPITAL HILL CLIMB"
+];
+
+const pLevels = [
+  // LEVEL 1: GRASSROOTS TRAIL
+  [
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                  ?  ?                                          ",
+    "                                 ######                                         ",
+    "                     ###                                  ###                   ",
+    "                                                                                ",
+    "              ###                                                            P  ",
+    "                                 E          E                               ####",
+    "###################   #######################################   ################"
+  ],
+  // LEVEL 2: STATE PRIMARIES
+  [
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                 ?  ?                                           ",
+    "                                ######                                          ",
+    "                                                                                ",
+    "                             ###      ###                                       ",
+    "                                                                                ",
+    "                   ###                         ###                              ",
+    "                                                                                ",
+    "             ###                                     ###                     P  ",
+    "                                E                                           ####",
+    "##################     ##########    ##########     ############################"
+  ],
+  // LEVEL 3: CAPITAL HILL CLIMB
+  [
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                                                                ",
+    "                                   ?  ?                                         ",
+    "                                  ######                                        ",
+    "                             #              #                                   ",
+    "                            ###            ###                                  ",
+    "                           #####          #####                                 ",
+    "                                                                                ",
+    "                     ###                         ###                            ",
+    "              ###                                      ###                      ",
+    "                                                                             P  ",
+    "                                 E                                          ####",
+    "###########          ###########    ######    ###########          #############"
+  ]
+];
+
+function initPlatformer() {
+  pCanvas = document.getElementById('platformerCanvas');
+  pCtx = pCanvas.getContext('2d');
+  
+  resizePlatformer();
+  window.addEventListener('resize', resizePlatformer);
+  
+  // Wire level selector buttons
+  document.querySelectorAll('.p-level-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      sfx.play('click');
+      const lvl = parseInt(btn.dataset.level);
+      startPlatformerLevel(lvl);
+    };
+  });
+  
+  // Touch controls for mobile
+  const wireMobileBtn = (id, key) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const press = (e) => { e.preventDefault(); sfx.init(); platKeys[key] = true; };
+    const release = (e) => { e.preventDefault(); platKeys[key] = false; };
+    btn.addEventListener('pointerdown', press);
+    btn.addEventListener('pointerup', release);
+    btn.addEventListener('pointercancel', release);
+    btn.addEventListener('pointerout', release);
+  };
+  wireMobileBtn('btn-p-left', 'Left');
+  wireMobileBtn('btn-p-right', 'Right');
+  wireMobileBtn('btn-p-jump', 'Jump');
+  
+  window.addEventListener('keydown', handlePKeyDown);
+  window.addEventListener('keyup', handlePKeyUp);
+  
+  document.getElementById('platformer-level-select').classList.remove('hidden');
+  pGameState = 'select';
+  pActive = true;
+  pLastTime = 0;
+  pAnimId = requestAnimationFrame(platformerTick);
+}
+
+function exitPlatformer() {
+  pActive = false;
+  if (pAnimId) {
+    cancelAnimationFrame(pAnimId);
+    pAnimId = null;
+  }
+  window.removeEventListener('resize', resizePlatformer);
+  window.removeEventListener('keydown', handlePKeyDown);
+  window.removeEventListener('keyup', handlePKeyUp);
+  
+  document.getElementById('platformer-level-select').classList.add('hidden');
+  document.getElementById('platformer-gameover').classList.add('hidden');
+  document.getElementById('platformer-victory').classList.add('hidden');
+}
+
+function resizePlatformer() {
+  if (!pCanvas) return;
+  pW = pCanvas.width = window.innerWidth;
+  pH = pCanvas.height = window.innerHeight;
+}
+
+function handlePKeyDown(e) {
+  if (!pActive) return;
+  sfx.init();
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') platKeys.Left = true;
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') platKeys.Right = true;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') {
+    platKeys.Jump = true;
+    e.preventDefault();
+  }
+}
+
+function handlePKeyUp(e) {
+  if (!pActive) return;
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') platKeys.Left = false;
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') platKeys.Right = false;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') platKeys.Jump = false;
+}
+
+function startPlatformerLevel(lvlIdx) {
+  document.getElementById('platformer-level-select').classList.add('hidden');
+  document.getElementById('platformer-gameover').classList.add('hidden');
+  document.getElementById('platformer-victory').classList.add('hidden');
+  
+  pCurrentLevelIdx = lvlIdx;
+  document.getElementById('platformer-level-name').textContent = pLevelTitles[lvlIdx];
+  
+  pScore = 0;
+  pLives = 3;
+  updatePHud();
+  
+  pPlayer.x = 80;
+  pPlayer.y = 100;
+  pPlayer.vx = 0;
+  pPlayer.vy = 0;
+  pPlayer.grounded = false;
+  pPlayer.hurtCooldown = 0;
+  pPlayer.facing = 'right';
+  pPlayer.animFrame = 0;
+  pPlayer.capeAngle = 0;
+  
+  pCamX = 0;
+  pBlocks = [];
+  pEnemies = [];
+  pCollectibles = [];
+  pParticles = [];
+  
+  buildPlatformerMap(lvlIdx);
+  pGameState = 'playing';
+}
+
+function updatePHud() {
+  document.getElementById('platformer-score').textContent = pScore;
+  document.getElementById('platformer-lives').textContent = pLives;
+}
+
+function buildPlatformerMap(lvlIdx) {
+  const mapGrid = pLevels[lvlIdx];
+  const rows = mapGrid.length;
+  const cols = mapGrid[0].length;
+  
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const char = mapGrid[r].charAt(c);
+      const bx = c * P_BLOCK_SIZE;
+      const by = r * P_BLOCK_SIZE;
+      
+      if (char === '#') {
+        pBlocks.push({ x: bx, y: by, w: P_BLOCK_SIZE, h: P_BLOCK_SIZE, type: 'solid', color: '#6d3f21', border: '#8e5a36' });
+      } else if (char === '?') {
+        pBlocks.push({ x: bx, y: by, w: P_BLOCK_SIZE, h: P_BLOCK_SIZE, type: 'question', hit: false, color: '#f1c40f', border: '#ffeaa7' });
+      } else if (char === 'B') {
+        pCollectibles.push({ x: bx + 10, y: by + 10, w: 20, h: 20, type: 'ballot', vy: 0, bobOffset: Math.random() * Math.PI });
+      } else if (char === 'E') {
+        pEnemies.push({ x: bx, y: by + (P_BLOCK_SIZE - 32), w: 32, h: 32, vx: -1.5, type: 'slinger', rangeLeft: bx - 80, rangeRight: bx + 80, isGrounded: true });
+      } else if (char === 'P') {
+        pPodium = { x: bx, y: by - 80, w: 40, h: 120 };
+      }
+    }
+  }
+}
+
+function updatePlatformer(dt) {
+  if (pGameState !== 'playing') return;
+  
+  if (pPlayer.hurtCooldown > 0) {
+    pPlayer.hurtCooldown--;
+  }
+  
+  let moveX = 0;
+  if (platKeys.Left) {
+    moveX = -4.5;
+    pPlayer.facing = 'left';
+  }
+  if (platKeys.Right) {
+    moveX = 4.5;
+    pPlayer.facing = 'right';
+  }
+  
+  pPlayer.vx = moveX;
+  pPlayer.vy += 0.55;
+  if (pPlayer.vy > 12) pPlayer.vy = 12;
+  
+  if (platKeys.Jump && pPlayer.grounded) {
+    pPlayer.vy = -12.5;
+    pPlayer.grounded = false;
+    sfx.play('launch');
+  }
+  
+  pPlayer.grounded = false;
+  pPlayer.x += pPlayer.vx;
+  resolveCollisionsX();
+  
+  pPlayer.y += pPlayer.vy;
+  resolveCollisionsY();
+  
+  if (Math.abs(pPlayer.vx) > 0.1) {
+    pPlayer.animFrame += 0.18;
+  } else {
+    pPlayer.animFrame = 0;
+  }
+  
+  const targetCapeAngle = (pPlayer.vx * -0.08) + (pPlayer.vy * 0.05);
+  pPlayer.capeAngle += (targetCapeAngle - pPlayer.capeAngle) * 0.15;
+  
+  if (pPlayer.y > 650) {
+    playerHurt();
+  }
+  
+  pCollectibles.forEach(c => {
+    if (c.vy) {
+      c.y += c.vy;
+      c.vy += 0.2;
+      if (c.vy >= 0) c.vy = 0;
+    }
+    c.yOffset = Math.sin(frame * 0.1 + c.bobOffset) * 4;
+    
+    if (checkAABB(pPlayer, { x: c.x, y: c.y + c.yOffset, w: c.w, h: c.h })) {
+      c.collected = true;
+      pScore += 100;
+      updatePHud();
+      sfx.play('powerup');
+    }
+  });
+  pCollectibles = pCollectibles.filter(c => !c.collected);
+  
+  pEnemies.forEach(e => {
+    e.x += e.vx;
+    
+    if (e.x <= e.rangeLeft) {
+      e.x = e.rangeLeft;
+      e.vx = Math.abs(e.vx);
+    } else if (e.x >= e.rangeRight) {
+      e.x = e.rangeRight;
+      e.vx = -Math.abs(e.vx);
+    }
+    
+    let enemyHitSolid = false;
+    pBlocks.forEach(b => {
+      if (b.type === 'solid' && checkAABB(e, b)) {
+        enemyHitSolid = true;
+      }
+    });
+    if (enemyHitSolid) {
+      e.vx = -e.vx;
+      e.x += e.vx;
+    }
+    
+    if (checkAABB(pPlayer, e)) {
+      if (pPlayer.vy > 0 && (pPlayer.y + pPlayer.h - pPlayer.vy) <= e.y + 12) {
+        e.dead = true;
+        pPlayer.vy = -7.5;
+        pScore += 200;
+        updatePHud();
+        sfx.play('pop');
+        
+        for (let i = 0; i < 8; i++) {
+          pParticles.push({
+            x: e.x + e.w/2,
+            y: e.y + 5,
+            vx: (Math.random() - 0.5) * 4,
+            vy: -Math.random() * 3 - 2,
+            r: Math.random() * 3 + 2,
+            color: '#ff7d5f',
+            life: 30
+          });
+        }
+      } else {
+        playerHurt();
+      }
+    }
+  });
+  pEnemies = pEnemies.filter(e => !e.dead);
+  
+  pParticles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+  });
+  pParticles = pParticles.filter(p => p.life > 0);
+  
+  if (checkAABB(pPlayer, pPodium)) {
+    pGameState = 'victory';
+    sfx.play('level');
+    document.getElementById('platformer-victory-score').textContent = pScore;
+    document.getElementById('platformer-victory').classList.remove('hidden');
+  }
+}
+
+function playerHurt() {
+  if (pPlayer.hurtCooldown > 0) return;
+  
+  pLives--;
+  updatePHud();
+  sfx.play('hit');
+  
+  if (pLives <= 0) {
+    pGameState = 'gameover';
+    document.getElementById('platformer-gameover').classList.remove('hidden');
+  } else {
+    pPlayer.x = 80;
+    pPlayer.y = 100;
+    pPlayer.vx = 0;
+    pPlayer.vy = 0;
+    pPlayer.hurtCooldown = 60;
+  }
+}
+
+function checkAABB(a, b) {
+  return a.x < b.x + b.w &&
+         a.x + a.w > b.x &&
+         a.y < b.y + b.h &&
+         a.y + a.h > b.y;
+}
+
+function resolveCollisionsX() {
+  pBlocks.forEach(b => {
+    if (b.type === 'solid' || b.type === 'question') {
+      if (checkAABB(pPlayer, b)) {
+        if (pPlayer.vx > 0) {
+          pPlayer.x = b.x - pPlayer.w;
+          pPlayer.vx = 0;
+        } else if (pPlayer.vx < 0) {
+          pPlayer.x = b.x + b.w;
+          pPlayer.vx = 0;
+        }
+      }
+    }
+  });
+}
+
+function resolveCollisionsY() {
+  pBlocks.forEach(b => {
+    if (b.type === 'solid' || b.type === 'question') {
+      if (checkAABB(pPlayer, b)) {
+        if (pPlayer.vy > 0) {
+          pPlayer.y = b.y - pPlayer.h;
+          pPlayer.vy = 0;
+          pPlayer.grounded = true;
+        } else if (pPlayer.vy < 0) {
+          pPlayer.y = b.y + b.h;
+          pPlayer.vy = 0;
+          
+          if (b.type === 'question' && !b.hit) {
+            b.hit = true;
+            sfx.play('bounce');
+            
+            pCollectibles.push({
+              x: b.x + 10,
+              y: b.y - 30,
+              w: 20,
+              h: 20,
+              type: 'ballot',
+              vy: -4,
+              bobOffset: Math.random() * Math.PI
+            });
+            
+            pScore += 100;
+            updatePHud();
+          }
+        }
+      }
+    }
+  });
+}
+
+function drawBlock(ctx, b) {
+  ctx.save();
+  ctx.shadowBlur = 4;
+  ctx.shadowColor = b.type === 'question' ? 'rgba(241, 196, 15, 0.4)' : 'rgba(0,0,0,0.3)';
+  
+  if (b.type === 'solid') {
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(b.x, b.y, b.w, 8);
+    
+    ctx.strokeStyle = '#27ae60';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+  } else if (b.type === 'question') {
+    if (b.hit) {
+      ctx.fillStyle = '#7f8c8d';
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.strokeStyle = '#95a5a6';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
+    } else {
+      let grad = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h);
+      grad.addColorStop(0, '#f1c40f');
+      grad.addColorStop(1, '#d35400');
+      ctx.fillStyle = grad;
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
+      
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 20px Outfit';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', b.x + b.w/2, b.y + b.h/2);
+    }
+  }
+  ctx.restore();
+}
+
+function drawEnemy(ctx, e) {
+  ctx.save();
+  ctx.translate(e.x + e.w/2, e.y + e.h/2);
+  ctx.shadowBlur = 6;
+  ctx.shadowColor = '#e74c3c';
+  
+  ctx.fillStyle = '#2c3e50';
+  ctx.beginPath();
+  ctx.arc(0, 0, e.w/2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#c0392b';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  
+  const rot = (e.x * 0.08) % (Math.PI * 2);
+  ctx.rotate(rot);
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.arc(e.w/4, 0, 4, 0, Math.PI*2);
+  ctx.fill();
+  
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(e.w/4 + 1.5, -1.5, 1.5, 0, Math.PI*2);
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+function drawCollectible(ctx, c) {
+  ctx.save();
+  const cy = c.y + (c.yOffset || 0);
+  ctx.shadowBlur = 8;
+  ctx.shadowColor = '#2ecc71';
+  
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(c.x, cy, c.w, c.h);
+  
+  ctx.strokeStyle = '#bdc3c7';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(c.x, cy, c.w, c.h);
+  
+  ctx.beginPath();
+  ctx.moveTo(c.x, cy);
+  ctx.lineTo(c.x + c.w/2, cy + c.h/2);
+  ctx.lineTo(c.x + c.w, cy);
+  ctx.stroke();
+  
+  ctx.fillStyle = '#2ecc71';
+  ctx.font = 'bold 8px Outfit';
+  ctx.fillText('✔', c.x + c.w/2 - 4, cy + c.h - 2);
+  
+  ctx.restore();
+}
+
+function drawPodium(ctx, p) {
+  ctx.save();
+  ctx.fillStyle = '#7f8c8d';
+  ctx.fillRect(p.x + p.w/2 - 3, p.y, 6, p.h);
+  
+  ctx.fillStyle = '#f1c40f';
+  ctx.beginPath();
+  ctx.arc(p.x + p.w/2, p.y, 6, 0, Math.PI*2);
+  ctx.fill();
+  
+  const flagW = 28;
+  const flagH = 18;
+  const flagWave = Math.sin(frame * 0.15) * 2;
+  
+  ctx.fillStyle = '#3498db';
+  ctx.fillRect(p.x + p.w/2 + 3, p.y + 4 + flagWave, flagW, flagH);
+  
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 10px Outfit';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('★', p.x + p.w/2 + 3 + flagW/2, p.y + 4 + flagWave + flagH/2);
+  
+  ctx.fillStyle = '#34495e';
+  ctx.fillRect(p.x, p.y + p.h - 12, p.w, 12);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(p.x, p.y + p.h - 12, p.w, 12);
+  
+  ctx.restore();
+}
+
+function drawPlayerCape(ctx, px, py, pWidth, pHeight) {
+  ctx.save();
+  ctx.translate(px + (pPlayer.facing === 'right' ? 8 : pWidth - 8), py + 12);
+  ctx.fillStyle = '#ff3838';
+  ctx.strokeStyle = '#c0392b';
+  ctx.lineWidth = 1.5;
+  
+  const wWidth = 24;
+  const wHeight = 32;
+  const wave = Math.sin(frame * 0.2) * 2;
+  
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  
+  if (pPlayer.facing === 'right') {
+    const capeAngle = pPlayer.capeAngle || 0;
+    const cx1 = -16 - capeAngle * 10;
+    const cy1 = 12 + wave;
+    const cx2 = -wWidth - capeAngle * 20;
+    const cy2 = wHeight;
+    ctx.bezierCurveTo(cx1, cy1, cx2, cy2 - 8, cx2, cy2);
+    ctx.lineTo(cx2 + 6, cy2);
+    ctx.bezierCurveTo(cx2 + 4, cy2 - 10, -6, 12, 0, 8);
+  } else {
+    const capeAngle = pPlayer.capeAngle || 0;
+    const cx1 = 16 + capeAngle * 10;
+    const cy1 = 12 + wave;
+    const cx2 = wWidth + capeAngle * 20;
+    const cy2 = wHeight;
+    ctx.bezierCurveTo(cx1, cy1, cx2, cy2 - 8, cx2, cy2);
+    ctx.lineTo(cx2 - 6, cy2);
+    ctx.bezierCurveTo(cx2 - 4, cy2 - 10, 6, 12, 0, 8);
+  }
+  
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPlatformerPlayer(ctx) {
+  const px = pPlayer.x;
+  const py = pPlayer.y;
+  const pw = pPlayer.w;
+  const ph = pPlayer.h;
+  
+  if (pPlayer.hurtCooldown > 0 && Math.floor(frame / 4) % 2 === 0) {
+    return;
+  }
+  
+  drawPlayerCape(ctx, px, py, pw, ph);
+  
+  ctx.save();
+  ctx.translate(px + pw/2, py + ph/2);
+  
+  if (pPlayer.facing === 'left') {
+    ctx.scale(-1, 1);
+  }
+  
+  const bob = Math.sin(pPlayer.animFrame) * 1.5;
+  
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(0, ph/2 - 2, 12, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.fillStyle = '#ff7675';
+  const lOffset = Math.sin(pPlayer.animFrame) * 6;
+  ctx.fillRect(-8, ph/2 - 8 + bob + (lOffset > 0 ? -2 : 0), 6, 8);
+  ctx.fillRect(2, ph/2 - 8 + bob + (lOffset < 0 ? -2 : 0), 6, 8);
+  
+  ctx.fillStyle = '#7d5fff';
+  ctx.fillRect(-10, -8 + bob, 20, 18);
+  
+  ctx.fillStyle = '#f1c40f';
+  ctx.fillRect(-11, 8 + bob, 22, 3);
+  
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(0, -2 + bob, 3, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.fillStyle = '#ffdbac';
+  ctx.beginPath();
+  ctx.arc(0, -18 + bob, 8, 0, Math.PI*2);
+  ctx.fill();
+  
+  ctx.fillStyle = '#2d3436';
+  ctx.beginPath();
+  ctx.arc(0, -22 + bob, 9, Math.PI, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(-8, -21 + bob, 3, 5);
+  
+  ctx.fillStyle = '#ff7675';
+  ctx.fillRect(-6, -20 + bob, 12, 3);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-4, -19 + bob, 2, 2);
+  ctx.fillRect(2, -19 + bob, 2, 2);
+  
+  ctx.restore();
+}
+
+function drawPlatformerParallaxBackground(ctx, yOffset) {
+  ctx.save();
+  ctx.fillStyle = '#170921';
+  ctx.beginPath();
+  for (let x = pCamX * 0.5 - 200; x < pCamX * 0.5 + pW + 400; x += 300) {
+    ctx.quadraticCurveTo(x + 150, 200, x + 300, 300);
+  }
+  ctx.lineTo(pCamX * 0.5 + pW + 400, 600);
+  ctx.lineTo(pCamX * 0.5 - 200, 600);
+  ctx.fill();
+  ctx.restore();
+  
+  ctx.save();
+  ctx.fillStyle = '#261036';
+  ctx.beginPath();
+  for (let x = pCamX * 0.7 - 200; x < pCamX * 0.7 + pW + 400; x += 200) {
+    ctx.quadraticCurveTo(x + 100, 320, x + 200, 420);
+  }
+  ctx.lineTo(pCamX * 0.7 + pW + 400, 600);
+  ctx.lineTo(pCamX * 0.7 - 200, 600);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPlatformerGame() {
+  pCtx.clearRect(0, 0, pW, pH);
+  
+  const yOffset = Math.max(0, pH - 600);
+  const targetCamX = pPlayer.x - pW / 3;
+  pCamX += (targetCamX - pCamX) * 0.15;
+  const mapGridWidth = pLevels[pCurrentLevelIdx][0].length * P_BLOCK_SIZE;
+  if (pCamX < 0) pCamX = 0;
+  if (pCamX > mapGridWidth - pW) pCamX = mapGridWidth - pW;
+  
+  pCtx.save();
+  pCtx.translate(-pCamX, yOffset);
+  
+  drawPlatformerParallaxBackground(pCtx, yOffset);
+  
+  pBlocks.forEach(b => {
+    if (b.x + b.w >= pCamX - P_BLOCK_SIZE && b.x <= pCamX + pW) {
+      drawBlock(pCtx, b);
+    }
+  });
+  
+  drawPodium(pCtx, pPodium);
+  
+  pCollectibles.forEach(c => {
+    drawCollectible(pCtx, c);
+  });
+  
+  pEnemies.forEach(e => {
+    drawEnemy(pCtx, e);
+  });
+  
+  pParticles.forEach(p => {
+    pCtx.save();
+    pCtx.fillStyle = p.color;
+    pCtx.globalAlpha = p.life / 30;
+    pCtx.beginPath();
+    pCtx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    pCtx.fill();
+    pCtx.restore();
+  });
+  
+  drawPlatformerPlayer(pCtx);
+  
+  pCtx.restore();
+}
+
+function platformerTick(timestamp) {
+  if (!pActive) return;
+  if (!pLastTime) pLastTime = timestamp;
+  let dt = (timestamp - pLastTime) / 1000;
+  pLastTime = timestamp;
+  
+  if (dt > 0.1) dt = 0.1;
+  
+  updatePlatformer(dt);
+  drawPlatformerGame();
+  
+  pAnimId = requestAnimationFrame(platformerTick);
+}
+
 
 
 

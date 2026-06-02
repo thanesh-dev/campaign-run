@@ -1754,4 +1754,188 @@ html, body {
   }
 }
 
+/* =============================================
+   PLATFORM CAMPAIGN GAME SCREEN
+   ============================================= */
+#platformer-screen {
+  background: #0f0514;
+  overflow: hidden;
+}
+
+#platformerCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at 50% 50%, #200d30 0%, #0f0514 100%);
+  touch-action: none;
+}
+
+.hub-card #btn-goto-platformer {
+  background: linear-gradient(135deg, #a8a5e6, #7d5fff);
+  color: #fff;
+}
+.hub-card #btn-goto-platformer:hover {
+  box-shadow: 0 6px 20px rgba(125, 95, 255, 0.4);
+}
+
+.platformer-hud {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 80px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 24px;
+  background: rgba(15, 5, 20, 0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  z-index: 10;
+  color: #fff;
+  font-family: 'Outfit', sans-serif;
+}
+
+.p-hud-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.p-stats {
+  display: flex;
+  gap: 24px;
+}
+
+.p-score-lbl, .p-lives-lbl {
+  font-size: clamp(0.85rem, 3vw, 1.1rem);
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.p-score-lbl span {
+  color: #a8a5e6;
+  text-shadow: 0 0 10px rgba(168, 165, 230, 0.5);
+}
+
+.p-lives-lbl span {
+  color: #ff4757;
+  text-shadow: 0 0 10px rgba(255, 71, 87, 0.5);
+}
+
+.p-level-name {
+  font-size: clamp(0.85rem, 3vw, 1.1rem);
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+.platformer-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 5, 20, 0.85);
+  backdrop-filter: blur(10px);
+  z-index: 20;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.platformer-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* On-screen controls for mobile */
+.mobile-controls {
+  position: absolute;
+  bottom: 30px;
+  left: 0;
+  right: 0;
+  display: none;
+  justify-content: space-between;
+  padding: 0 40px;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.mobile-controls button {
+  pointer-events: auto;
+}
+
+.dpad {
+  display: flex;
+  gap: 20px;
+}
+
+.btn-dpad, .btn-action {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(5px);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: background 0.1s, transform 0.1s;
+}
+
+.btn-dpad:active, .btn-action:active {
+  background: rgba(255, 255, 255, 0.35);
+  transform: scale(0.9);
+}
+
+.btn-action {
+  width: 90px;
+  height: 90px;
+  font-size: 0.9rem;
+  background: rgba(125, 95, 255, 0.3);
+  border-color: rgba(125, 95, 255, 0.6);
+  text-shadow: 0 0 5px rgba(125, 95, 255, 0.8);
+}
+
+.btn-action:active {
+  background: rgba(125, 95, 255, 0.5);
+}
+
+@media (pointer: coarse), (max-width: 900px) {
+  .mobile-controls {
+    display: flex;
+  }
+}
+
+@media (max-width: 600px) {
+  .p-hud-left {
+    gap: 10px;
+  }
+  .p-stats {
+    gap: 10px;
+  }
+  .p-level-name {
+    display: none;
+  }
+  .mobile-controls {
+    padding: 0 20px;
+    bottom: 20px;
+  }
+  .btn-dpad {
+    width: 60px;
+    height: 60px;
+    font-size: 1.25rem;
+  }
+  .btn-action {
+    width: 75px;
+    height: 75px;
+    font-size: 0.8rem;
+  }
+}
+
 
